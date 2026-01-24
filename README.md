@@ -37,7 +37,7 @@ AI-powered database query assistant with a natural language interface. Query you
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/fihtony/DataLoom.git
 cd DataLoom
 
 # Install dependencies
