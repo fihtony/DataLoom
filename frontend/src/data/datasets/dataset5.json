@@ -1,0 +1,87 @@
+{
+  "success": true,
+  "data": {
+    "sql": "SELECT date(s.created_at) AS day, COUNT(CASE WHEN s.is_successful THEN 1 END) AS successful_count, COUNT(CASE WHEN NOT s.is_successful THEN 1 END) AS failed_count FROM api_responses s JOIN api_requests r ON r.id = s.api_request_id WHERE (lower(coalesce(r.endpoint_name, '')) LIKE '%login%' OR lower(r.endpoint_path) LIKE '%login%') AND date(s.created_at) >= date('now','-19 days') GROUP BY day ORDER BY day;",
+    "data": [
+      {
+        "day": "2026-01-02",
+        "successful_count": 2,
+        "failed_count": 0
+      },
+      {
+        "day": "2026-01-04",
+        "successful_count": 8,
+        "failed_count": 1
+      },
+      {
+        "day": "2026-01-05",
+        "successful_count": 10,
+        "failed_count": 1
+      },
+      {
+        "day": "2026-01-09",
+        "successful_count": 2,
+        "failed_count": 1
+      },
+      {
+        "day": "2026-01-12",
+        "successful_count": 1,
+        "failed_count": 0
+      },
+      {
+        "day": "2026-01-17",
+        "successful_count": 6,
+        "failed_count": 0
+      },
+      {
+        "day": "2026-01-18",
+        "successful_count": 0,
+        "failed_count": 1
+      }
+    ],
+    "columns": [
+      {
+        "name": "Day",
+        "key": "day",
+        "type": "TEXT"
+      },
+      {
+        "name": "Successful Count",
+        "key": "successful_count",
+        "type": "INTEGER"
+      },
+      {
+        "name": "Failed Count",
+        "key": "failed_count",
+        "type": "INTEGER"
+      }
+    ],
+    "rowCount": 7,
+    "executionTimeMs": 56,
+    "visualization": {
+      "type": "bar",
+      "xAxis": "day",
+      "yAxis": ["successful_count", "failed_count"],
+      "title": "Login Success vs Failure per Day (Last 20 Days)",
+      "groupBy": null,
+      "legend": [
+        {
+          "name": "Successful Count",
+          "key": "successful_count",
+          "color": "#1f77b4",
+          "description": "INTEGER column: successful_count"
+        },
+        {
+          "name": "Failed Count",
+          "key": "failed_count",
+          "color": "#ff7f0e",
+          "description": "INTEGER column: failed_count"
+        }
+      ],
+      "xAxisLabel": "Date",
+      "yAxisLabel": "Count"
+    }
+  },
+  "explanation": "Counts daily login successes vs failures over the past 20 days by matching requests whose name or path contains 'login'.",
+  "timestamp": "2026-01-21T20:02:55.065Z"
+}

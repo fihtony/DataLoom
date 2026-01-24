@@ -1,0 +1,117 @@
+{
+  "success": true,
+  "data": {
+    "sql": "SELECT date(created_at) AS day, SUM(CASE WHEN is_successful THEN 1 ELSE 0 END) AS successful_count, SUM(CASE WHEN NOT is_successful THEN 1 ELSE 0 END) AS failed_count FROM api_responses WHERE created_at >= datetime('now','-30 days') GROUP BY day ORDER BY day;",
+    "data": [
+      {
+        "day": "2026-01-02",
+        "successful_count": 52,
+        "failed_count": 7
+      },
+      {
+        "day": "2026-01-04",
+        "successful_count": 46,
+        "failed_count": 15
+      },
+      {
+        "day": "2026-01-05",
+        "successful_count": 79,
+        "failed_count": 21
+      },
+      {
+        "day": "2026-01-06",
+        "successful_count": 32,
+        "failed_count": 29
+      },
+      {
+        "day": "2026-01-07",
+        "successful_count": 15,
+        "failed_count": 1
+      },
+      {
+        "day": "2026-01-08",
+        "successful_count": 2,
+        "failed_count": 0
+      },
+      {
+        "day": "2026-01-09",
+        "successful_count": 62,
+        "failed_count": 23
+      },
+      {
+        "day": "2026-01-10",
+        "successful_count": 0,
+        "failed_count": 4
+      },
+      {
+        "day": "2026-01-11",
+        "successful_count": 0,
+        "failed_count": 1
+      },
+      {
+        "day": "2026-01-12",
+        "successful_count": 61,
+        "failed_count": 18
+      },
+      {
+        "day": "2026-01-16",
+        "successful_count": 12,
+        "failed_count": 15
+      },
+      {
+        "day": "2026-01-17",
+        "successful_count": 127,
+        "failed_count": 0
+      },
+      {
+        "day": "2026-01-18",
+        "successful_count": 10,
+        "failed_count": 1
+      }
+    ],
+    "columns": [
+      {
+        "name": "Day",
+        "key": "day",
+        "type": "TEXT"
+      },
+      {
+        "name": "Successful Count",
+        "key": "successful_count",
+        "type": "INTEGER"
+      },
+      {
+        "name": "Failed Count",
+        "key": "failed_count",
+        "type": "INTEGER"
+      }
+    ],
+    "rowCount": 13,
+    "executionTimeMs": 14,
+    "visualization": {
+      "type": "line",
+      "xAxis": "day",
+      "yAxis": ["successful_count", "failed_count"],
+      "title": "Daily Successful vs Failed Requests (Last 30 Days)",
+      "groupBy": null,
+      "legend": [
+        {
+          "name": "Successful Count",
+          "key": "successful_count",
+          "color": "#1f77b4",
+          "description": "INTEGER column: successful_count"
+        },
+        {
+          "name": "Failed Count",
+          "key": "failed_count",
+          "color": "#ff7f0e",
+          "description": "INTEGER column: failed_count"
+        }
+      ],
+      "xAxisLabel": "Date",
+      "yAxisLabel": "Request Count"
+    }
+  },
+  "explanation": "Counts daily successful and failed responses from api_responses over the past 30 days.",
+  "timestamp": "2026-01-21T19:00:21.548Z"
+}

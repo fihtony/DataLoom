@@ -1,0 +1,72 @@
+{
+  "success": true,
+  "data": {
+    "sql": "SELECT s.response_status, COUNT(*) AS request_count FROM api_responses s WHERE s.created_at >= datetime('now','-30 days') GROUP BY s.response_status ORDER BY request_count DESC;",
+    "data": [
+      {
+        "response_status": 200,
+        "request_count": 497
+      },
+      {
+        "response_status": 401,
+        "request_count": 33
+      },
+      {
+        "response_status": 502,
+        "request_count": 30
+      },
+      {
+        "response_status": 400,
+        "request_count": 28
+      },
+      {
+        "response_status": 204,
+        "request_count": 24
+      },
+      {
+        "response_status": 404,
+        "request_count": 14
+      },
+      {
+        "response_status": 403,
+        "request_count": 6
+      },
+      {
+        "response_status": 201,
+        "request_count": 1
+      }
+    ],
+    "columns": [
+      {
+        "name": "Response Status",
+        "key": "response_status",
+        "type": "INTEGER"
+      },
+      {
+        "name": "Request Count",
+        "key": "request_count",
+        "type": "INTEGER"
+      }
+    ],
+    "rowCount": 8,
+    "executionTimeMs": 25,
+    "visualization": {
+      "type": "bar",
+      "xAxis": "response_status",
+      "yAxis": "request_count",
+      "title": "Request count by HTTP response code (last 30 days)",
+      "legend": [
+        {
+          "name": "Status code count",
+          "key": "request_count",
+          "color": "#d62728",
+          "description": "Number of requests returning each HTTP status code"
+        }
+      ],
+      "xAxisLabel": "HTTP response status",
+      "yAxisLabel": "Number of requests"
+    }
+  },
+  "explanation": "Counts API responses per HTTP status code over the past 30 days using response timestamps.",
+  "timestamp": "2026-01-21T15:03:50.975Z"
+}

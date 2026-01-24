@@ -1,0 +1,50 @@
+{
+  "success": true,
+  "data": {
+    "sql": "SELECT hour, engagement FROM user_engagement_by_hour ORDER BY hour;",
+    "data": [
+      { "hour": "00:00", "engagement": 145 },
+      { "hour": "01:00", "engagement": 98 },
+      { "hour": "02:00", "engagement": 72 },
+      { "hour": "03:00", "engagement": 54 },
+      { "hour": "04:00", "engagement": 62 },
+      { "hour": "05:00", "engagement": 89 },
+      { "hour": "06:00", "engagement": 234 },
+      { "hour": "07:00", "engagement": 412 },
+      { "hour": "08:00", "engagement": 567 },
+      { "hour": "09:00", "engagement": 654 },
+      { "hour": "10:00", "engagement": 703 },
+      { "hour": "11:00", "engagement": 678 },
+      { "hour": "12:00", "engagement": 589 },
+      { "hour": "13:00", "engagement": 521 },
+      { "hour": "14:00", "engagement": 634 },
+      { "hour": "15:00", "engagement": 756 },
+      { "hour": "16:00", "engagement": 812 },
+      { "hour": "17:00", "engagement": 843 },
+      { "hour": "18:00", "engagement": 765 },
+      { "hour": "19:00", "engagement": 621 },
+      { "hour": "20:00", "engagement": 534 },
+      { "hour": "21:00", "engagement": 456 },
+      { "hour": "22:00", "engagement": 321 },
+      { "hour": "23:00", "engagement": 198 }
+    ],
+    "columns": [
+      { "name": "hour", "type": "TEXT" },
+      { "name": "engagement", "type": "INTEGER" }
+    ],
+    "rowCount": 24,
+    "executionTimeMs": 28,
+    "visualization": {
+      "type": "area",
+      "xAxis": "hour",
+      "yAxis": "engagement",
+      "title": "User Engagement by Hour",
+      "groupBy": null,
+      "legend": [{ "name": "Engagement", "color": "#ff7f0e", "description": "Number of active users by hour" }],
+      "xAxisLabel": "Hour of Day",
+      "yAxisLabel": "Active Users"
+    }
+  },
+  "explanation": "24-hour user engagement pattern showing peak activity during business hours (9 AM - 5 PM).",
+  "timestamp": "2026-01-21T02:33:20.733Z"
+}

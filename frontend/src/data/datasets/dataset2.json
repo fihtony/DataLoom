@@ -1,0 +1,42 @@
+{
+  "success": true,
+  "data": {
+    "sql": "SELECT month, revenue, expenses FROM monthly_revenue WHERE year = 2024 ORDER BY month;",
+    "data": [
+      { "month": "Jan", "revenue": 12000, "expenses": 8000 },
+      { "month": "Feb", "revenue": 15000, "expenses": 9000 },
+      { "month": "Mar", "revenue": 18000, "expenses": 10500 },
+      { "month": "Apr", "revenue": 16000, "expenses": 9500 },
+      { "month": "May", "revenue": 22000, "expenses": 11000 },
+      { "month": "Jun", "revenue": 25000, "expenses": 12500 },
+      { "month": "Jul", "revenue": 28000, "expenses": 13000 },
+      { "month": "Aug", "revenue": 26000, "expenses": 12800 },
+      { "month": "Sep", "revenue": 29000, "expenses": 13500 },
+      { "month": "Oct", "revenue": 31000, "expenses": 14000 },
+      { "month": "Nov", "revenue": 32000, "expenses": 14500 },
+      { "month": "Dec", "revenue": 35000, "expenses": 15000 }
+    ],
+    "columns": [
+      { "name": "month", "type": "TEXT" },
+      { "name": "revenue", "type": "INTEGER" },
+      { "name": "expenses", "type": "INTEGER" }
+    ],
+    "rowCount": 12,
+    "executionTimeMs": 15,
+    "visualization": {
+      "type": "line",
+      "xAxis": "month",
+      "yAxis": "revenue",
+      "title": "Monthly Revenue Trend",
+      "groupBy": null,
+      "legend": [
+        { "name": "Revenue", "color": "#1f77b4", "description": "Monthly revenue" },
+        { "name": "Expenses", "color": "#d62728", "description": "Monthly expenses" }
+      ],
+      "xAxisLabel": "Month",
+      "yAxisLabel": "Amount ($)"
+    }
+  },
+  "explanation": "Monthly revenue and expenses trend over 12 months. Shows revenue growth pattern and expense tracking.",
+  "timestamp": "2026-01-21T02:33:20.733Z"
+}

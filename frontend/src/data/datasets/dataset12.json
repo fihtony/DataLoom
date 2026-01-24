@@ -1,0 +1,99 @@
+{
+  "success": true,
+  "data": {
+    "sql": "SELECT s.response_status, COUNT(*) AS request_count, SUM(CASE WHEN s.is_successful THEN 1 ELSE 0 END) AS successful_count, ROUND( (SUM(CASE WHEN s.is_successful THEN 1 ELSE 0 END) * 1.0) / COUNT(*) , 4) AS success_rate FROM api_responses s JOIN api_requests r ON r.id = s.api_request_id WHERE s.created_at >= datetime('now', '-30 days') GROUP BY s.response_status ORDER BY request_count DESC;",
+    "data": [
+      {
+        "response_status": 200,
+        "request_count": 497,
+        "successful_count": 473,
+        "success_rate": 0.9517
+      },
+      {
+        "response_status": 401,
+        "request_count": 33,
+        "successful_count": 0,
+        "success_rate": 0
+      },
+      {
+        "response_status": 502,
+        "request_count": 30,
+        "successful_count": 0,
+        "success_rate": 0
+      },
+      {
+        "response_status": 400,
+        "request_count": 28,
+        "successful_count": 0,
+        "success_rate": 0
+      },
+      {
+        "response_status": 204,
+        "request_count": 24,
+        "successful_count": 24,
+        "success_rate": 1
+      },
+      {
+        "response_status": 404,
+        "request_count": 14,
+        "successful_count": 0,
+        "success_rate": 0
+      },
+      {
+        "response_status": 403,
+        "request_count": 6,
+        "successful_count": 0,
+        "success_rate": 0
+      },
+      {
+        "response_status": 201,
+        "request_count": 1,
+        "successful_count": 1,
+        "success_rate": 1
+      }
+    ],
+    "columns": [
+      {
+        "name": "response_status",
+        "type": "INTEGER"
+      },
+      {
+        "name": "request_count",
+        "type": "INTEGER"
+      },
+      {
+        "name": "successful_count",
+        "type": "INTEGER"
+      },
+      {
+        "name": "success_rate",
+        "type": "REAL"
+      }
+    ],
+    "rowCount": 8,
+    "executionTimeMs": 44,
+    "visualization": {
+      "type": "bar",
+      "xAxis": "response_status",
+      "yAxis": "request_count",
+      "title": "Requests by Response Status — Last 30 Days",
+      "groupBy": null,
+      "legend": [
+        {
+          "name": "Requests",
+          "color": "#1f77b4",
+          "description": "Total number of requests with the given response status"
+        },
+        {
+          "name": "Successful",
+          "color": "#2ca02c",
+          "description": "Count of responses considered successful (is_successful = true) per status"
+        }
+      ],
+      "xAxisLabel": "HTTP Response Status",
+      "yAxisLabel": "Number of Requests"
+    }
+  },
+  "explanation": "Counts requests over the past 30 days grouped by HTTP response status, showing total requests, successful count (2xx), and success rate per status.",
+  "timestamp": "2026-01-21T02:33:20.733Z"
+}

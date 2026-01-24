@@ -1,0 +1,37 @@
+{
+  "success": true,
+  "data": {
+    "sql": "SELECT product, sales, profit FROM products ORDER BY sales DESC;",
+    "data": [
+      { "product": "Product A", "sales": 4000, "profit": 240 },
+      { "product": "Product B", "sales": 3000, "profit": 221 },
+      { "product": "Product C", "sales": 2000, "profit": 229 },
+      { "product": "Product D", "sales": 2780, "profit": 200 },
+      { "product": "Product E", "sales": 1890, "profit": 229 },
+      { "product": "Product F", "sales": 2390, "profit": 200 },
+      { "product": "Product G", "sales": 3490, "profit": 210 }
+    ],
+    "columns": [
+      { "name": "Product", "key": "product", "type": "TEXT" },
+      { "name": "Sales", "key": "sales", "type": "INTEGER" },
+      { "name": "Profit", "key": "profit", "type": "INTEGER" }
+    ],
+    "rowCount": 7,
+    "executionTimeMs": 12,
+    "visualization": {
+      "type": "bar",
+      "xAxis": "product",
+      "yAxis": "sales",
+      "title": "Sales by Product",
+      "groupBy": null,
+      "legend": [
+        { "name": "sales", "color": "#1f77b4", "description": "Total sales amount" },
+        { "name": "profit", "color": "#2ca02c", "description": "Profit margin" }
+      ],
+      "xAxisLabel": "Product",
+      "yAxisLabel": "Sales Amount"
+    }
+  },
+  "explanation": "Sales data by product, showing total sales and profit margins. Best visualized with Bar or Pie charts.",
+  "timestamp": "2026-01-21T02:33:20.733Z"
+}

@@ -1,0 +1,34 @@
+{
+  "success": true,
+  "data": {
+    "sql": "SELECT quarter, growth FROM quarterly_growth ORDER BY quarter;",
+    "data": [
+      { "quarter": "Q1 2023", "growth": 5.2 },
+      { "quarter": "Q2 2023", "growth": 7.8 },
+      { "quarter": "Q3 2023", "growth": 6.4 },
+      { "quarter": "Q4 2023", "growth": 9.1 },
+      { "quarter": "Q1 2024", "growth": 8.5 },
+      { "quarter": "Q2 2024", "growth": 10.2 },
+      { "quarter": "Q3 2024", "growth": 11.3 },
+      { "quarter": "Q4 2024", "growth": 12.8 }
+    ],
+    "columns": [
+      { "name": "quarter", "type": "TEXT" },
+      { "name": "growth", "type": "REAL" }
+    ],
+    "rowCount": 8,
+    "executionTimeMs": 13,
+    "visualization": {
+      "type": "line",
+      "xAxis": "quarter",
+      "yAxis": "growth",
+      "title": "Quarterly Growth Rate",
+      "groupBy": null,
+      "legend": [{ "name": "Growth", "color": "#2ca02c", "description": "Quarter-over-quarter growth rate" }],
+      "xAxisLabel": "Quarter",
+      "yAxisLabel": "Growth Rate (%)"
+    }
+  },
+  "explanation": "Quarterly growth rate trend across 2 years showing consistent upward trajectory.",
+  "timestamp": "2026-01-21T02:33:20.733Z"
+}

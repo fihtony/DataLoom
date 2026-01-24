@@ -1,0 +1,31 @@
+{
+  "success": true,
+  "data": {
+    "sql": "SELECT company, share FROM market_share ORDER BY share DESC;",
+    "data": [
+      { "company": "Company A", "share": 28 },
+      { "company": "Company B", "share": 22 },
+      { "company": "Company C", "share": 18 },
+      { "company": "Company D", "share": 15 },
+      { "company": "Company E", "share": 17 }
+    ],
+    "columns": [
+      { "name": "company", "type": "TEXT" },
+      { "name": "share", "type": "INTEGER" }
+    ],
+    "rowCount": 5,
+    "executionTimeMs": 9,
+    "visualization": {
+      "type": "pie",
+      "xAxis": "company",
+      "yAxis": "share",
+      "title": "Market Share",
+      "groupBy": null,
+      "legend": [{ "name": "Share", "color": "#ff7f0e", "description": "Market share percentage" }],
+      "xAxisLabel": "Company",
+      "yAxisLabel": "Share %"
+    }
+  },
+  "explanation": "Market share distribution among competing companies.",
+  "timestamp": "2026-01-21T02:33:20.733Z"
+}

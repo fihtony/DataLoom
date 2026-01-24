@@ -1,0 +1,37 @@
+{
+  "success": true,
+  "data": {
+    "sql": "SELECT rating, count FROM product_ratings_distribution;",
+    "data": [
+      { "rating": "5 Stars", "count": 2450 },
+      { "rating": "4 Stars", "count": 1320 },
+      { "rating": "3 Stars", "count": 685 },
+      { "rating": "2 Stars", "count": 275 },
+      { "rating": "1 Star", "count": 145 }
+    ],
+    "columns": [
+      { "name": "rating", "type": "TEXT" },
+      { "name": "count", "type": "INTEGER" }
+    ],
+    "rowCount": 5,
+    "executionTimeMs": 9,
+    "visualization": {
+      "type": "pie",
+      "xAxis": "rating",
+      "yAxis": "count",
+      "title": "Product Ratings Distribution",
+      "groupBy": null,
+      "legend": [
+        { "name": "5 Stars", "color": "#1f77b4", "description": "Excellent ratings" },
+        { "name": "4 Stars", "color": "#ff7f0e", "description": "Good ratings" },
+        { "name": "3 Stars", "color": "#2ca02c", "description": "Average ratings" },
+        { "name": "2 Stars", "color": "#d62728", "description": "Poor ratings" },
+        { "name": "1 Star", "color": "#9467bd", "description": "Very poor ratings" }
+      ],
+      "xAxisLabel": null,
+      "yAxisLabel": null
+    }
+  },
+  "explanation": "Distribution of customer product ratings showing 79% positive feedback (4-5 stars) from 4,875 total reviews.",
+  "timestamp": "2026-01-21T02:33:20.733Z"
+}
