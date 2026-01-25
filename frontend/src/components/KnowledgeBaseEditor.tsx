@@ -102,6 +102,11 @@ export function KnowledgeBaseEditor(props: KnowledgeBaseEditorProps) {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Selection state for analysis results
+  const [selectedTables, setSelectedTables] = useState<Set<number>>(new Set());
+  const [selectedColumns, setSelectedColumns] = useState<Map<string, Set<number>>>(new Map());
+  const [selectedExamples, setSelectedExamples] = useState<Set<number>>(new Set());
+
   // Dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ type: "table" | "example" | "column"; data: any; index?: number } | null>(null);
@@ -164,6 +169,19 @@ export function KnowledgeBaseEditor(props: KnowledgeBaseEditorProps) {
       if (selectedAnalysisTab === "" && preloadedAnalysis.tableExplanations.length > 0) {
         setSelectedAnalysisTab(preloadedAnalysis.tableExplanations[0].table_name);
       }
+      
+      // Initialize selection state - select all by default
+      setSelectedTables(new Set(preloadedAnalysis.tableExplanations.map((_: any, idx: number) => idx)));
+      setSelectedExamples(new Set(preloadedAnalysis.sqlExamples.map((_: any, idx: number) => idx)));
+      
+      // Initialize column selection - select all columns for each table
+      const columnSelection = new Map<string, Set<number>>();
+      preloadedAnalysis.tableExplanations.forEach((table: TableExplanation) => {
+        if (table.columns && table.columns.length > 0) {
+          columnSelection.set(table.table_name, new Set(table.columns.map((_, idx) => idx)));
+        }
+      });
+      setSelectedColumns(columnSelection);
     }
   }, [preloadedAnalysis, selectedAnalysisTab]);
 
@@ -231,14 +249,53 @@ export function KnowledgeBaseEditor(props: KnowledgeBaseEditorProps) {
       return;
     }
 
+    // Check if anything is selected
+    if (selectedTables.size === 0 && selectedExamples.size === 0) {
+      setTestResult({
+        success: false,
+        message: "Please select at least one item to save",
+      });
+      return;
+    }
+
     setAnalyzing(true);
     try {
-      const result = await api.saveKnowledgeBase(connectionId, analysisResult);
+      // Build filtered analysis result based on selection
+      const filteredTableExplanations = analysisResult.tableExplanations
+        .filter((_, idx) => selectedTables.has(idx))
+        .map((table) => {
+          // Filter columns for this table
+          const selectedColumnIndices = selectedColumns.get(table.table_name);
+          if (selectedColumnIndices && table.columns) {
+            return {
+              ...table,
+              columns: table.columns.filter((_, colIdx) => selectedColumnIndices.has(colIdx)),
+            };
+          }
+          return table;
+        });
+
+      const filteredSqlExamples = analysisResult.sqlExamples.filter((_, idx) => selectedExamples.has(idx));
+
+      const filteredResult: AnalysisResult = {
+        tableExplanations: filteredTableExplanations,
+        sqlExamples: filteredSqlExamples,
+      };
+
+      const result = await api.saveKnowledgeBase(connectionId, filteredResult);
+      
+      // Calculate total columns saved
+      const totalColumnsSaved = filteredTableExplanations.reduce((sum, t) => sum + (t.columns?.length || 0), 0);
+      
       setTestResult({
         success: true,
-        message: `Knowledge base saved: ${result.stats?.saved?.tables || 0} new tables, ${result.stats?.updated?.tables || 0} updated tables, ${result.stats?.saved?.examples || 0} new examples`,
+        message: `Knowledge base saved: ${result.stats?.saved?.tables || 0} new tables (${totalColumnsSaved} columns), ${result.stats?.updated?.tables || 0} updated tables, ${result.stats?.saved?.examples || 0} new examples`,
       });
       setAnalysisResult(null);
+      // Reset selection state
+      setSelectedTables(new Set());
+      setSelectedColumns(new Map());
+      setSelectedExamples(new Set());
       await loadKnowledgeBase();
     } catch (error) {
       setTestResult({
@@ -420,31 +477,90 @@ export function KnowledgeBaseEditor(props: KnowledgeBaseEditorProps) {
     );
   }
 
+  // Handler for selecting all columns
+  const handleSelectAllColumns = (selectAll: boolean) => {
+    if (!analysisResult) return;
+    const newSelection = new Map<string, Set<number>>();
+    if (selectAll) {
+      analysisResult.tableExplanations.forEach((table) => {
+        if (table.columns && table.columns.length > 0) {
+          newSelection.set(table.table_name, new Set(table.columns.map((_, idx) => idx)));
+        }
+      });
+    }
+    setSelectedColumns(newSelection);
+  };
+
+  // Handler for column selection change per table
+  const handleColumnSelectionChange = (tableName: string, indices: Set<number>) => {
+    setSelectedColumns((prev) => {
+      const newMap = new Map(prev);
+      if (indices.size === 0) {
+        newMap.delete(tableName);
+      } else {
+        newMap.set(tableName, indices);
+      }
+      return newMap;
+    });
+  };
+
   // Show analysis results if available
   if (analysisResult) {
+    // Calculate total selected
+    const totalSelectedColumns = Array.from(selectedColumns.values()).reduce((sum, set) => sum + set.size, 0);
+    const totalItems = selectedTables.size + selectedExamples.size + totalSelectedColumns;
+
     return (
       <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <Alert severity="info">
-          AI Analysis completed. Review the results below and click "Save Analysis" to store them in the knowledge base.
+          AI Analysis completed. Select the items you want to save and click "Save Selected" to store them in the knowledge base.
+          <br />
+          <strong>Selected: {selectedTables.size} tables, {totalSelectedColumns} columns, {selectedExamples.size} SQL examples</strong>
         </Alert>
 
         {testResult && <Alert severity={testResult.success ? "success" : "error"}>{testResult.message}</Alert>}
 
-        {/* Use reusable Table Explanations display component */}
-        <TableExplanationsDisplay tableExplanations={analysisResult.tableExplanations} />
+        {/* Use reusable Table Explanations display component with selection */}
+        <TableExplanationsDisplay 
+          tableExplanations={analysisResult.tableExplanations}
+          selectable={true}
+          selectedIndices={selectedTables}
+          onSelectionChange={setSelectedTables}
+        />
 
-        {/* Use reusable Column Explanations display component */}
-        <ColumnExplanationsDisplay tableExplanations={analysisResult.tableExplanations} />
+        {/* Use reusable Column Explanations display component with selection */}
+        <ColumnExplanationsDisplay 
+          tableExplanations={analysisResult.tableExplanations}
+          selectable={true}
+          selectedColumns={selectedColumns}
+          onSelectionChange={handleColumnSelectionChange}
+          onSelectAllColumns={handleSelectAllColumns}
+        />
 
-        {/* Use reusable SQL Examples display component */}
-        <SqlExamplesDisplay sqlExamples={analysisResult.sqlExamples} />
+        {/* Use reusable SQL Examples display component with selection */}
+        <SqlExamplesDisplay 
+          sqlExamples={analysisResult.sqlExamples}
+          selectable={true}
+          selectedIndices={selectedExamples}
+          onSelectionChange={setSelectedExamples}
+        />
 
         <Box sx={{ display: "flex", gap: 2, justifyContent: "flex-end" }}>
-          <Button variant="outlined" onClick={() => setAnalysisResult(null)}>
+          <Button variant="outlined" onClick={() => {
+            setAnalysisResult(null);
+            setSelectedTables(new Set());
+            setSelectedColumns(new Map());
+            setSelectedExamples(new Set());
+          }}>
             Cancel
           </Button>
-          <Button variant="contained" startIcon={<SaveIcon />} onClick={handleSaveAnalysis} disabled={analyzing}>
-            Save Analysis
+          <Button 
+            variant="contained" 
+            startIcon={<SaveIcon />} 
+            onClick={handleSaveAnalysis} 
+            disabled={analyzing || totalItems === 0}
+          >
+            Save Selected ({totalItems} items)
           </Button>
         </Box>
       </Box>
