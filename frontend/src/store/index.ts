@@ -369,15 +369,19 @@ export const useStore = create<AppState>((set, get) => ({
     }));
 
     try {
-      // Call the query API with session IDs
+      // Call the query API with session IDs and agent info
       // Backend will:
       // 1. Validate connectionSessionId
       // 2. Validate or create chatSessionId
-      // 3. Use different AI prompt based on whether it's first question or follow-up
-      // 4. Return updated chatSessionId
+      // 3. Use the specified agent and provider for AI requests
+      // 4. Use different AI prompt based on whether it's first question or follow-up
+      // 5. Return updated chatSessionId
       const result = await api.executeNaturalLanguageQuery(activeConnectionId || 0, content, {
         connectionSessionId,
         chatSessionId: chatSessionId || undefined,
+        agentId: selectedAgent.id,
+        agentProvider: selectedAgent.provider,
+        model: selectedAgent.model,
       });
 
       // Update chat session ID if we got a new one (first question)

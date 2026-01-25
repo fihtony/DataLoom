@@ -61,7 +61,12 @@ export function KnowledgeBasePage() {
       try {
         const models = await api.getModelsFromAgent(selectedAgent);
         setAgentModels(models);
-        if (models.length > 0) {
+        
+        // Use the agent's saved model if available, otherwise use the first model
+        if (selectedAgent.model && models.find((m) => m.id === selectedAgent.model)) {
+          setSelectedModel(selectedAgent.model);
+        } else if (models.length > 0) {
+          // Fallback to first model only if agent's model is not in the list
           setSelectedModel(models[0].id);
         } else {
           setSelectedModel(null);
@@ -69,7 +74,13 @@ export function KnowledgeBasePage() {
       } catch (error) {
         console.error("Failed to load agent models:", error);
         setAgentModels([]);
-        setSelectedModel(null);
+        // Still try to use agent's saved model even if fetching models failed
+        if (selectedAgent.model) {
+          setAgentModels([{ id: selectedAgent.model, name: selectedAgent.model }]);
+          setSelectedModel(selectedAgent.model);
+        } else {
+          setSelectedModel(null);
+        }
       }
     };
 

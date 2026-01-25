@@ -53,6 +53,8 @@ interface ProviderConfig {
   name: string;
   defaultUrl: string;
   needsApiKey: boolean;
+  recommendedMaxTokens: number;
+  maxOutputTokens: number;
   supportedParams: {
     temperature: boolean;
     max_tokens: boolean;
@@ -62,13 +64,15 @@ interface ProviderConfig {
   };
 }
 
-// Provider configuration with supported parameters
+// Provider configuration with supported parameters and recommended max tokens
 const PROVIDERS: ProviderConfig[] = [
   {
     id: "copilot",
     name: "GitHub Copilot",
     defaultUrl: "http://localhost:1287",
     needsApiKey: false,
+    recommendedMaxTokens: 6000,
+    maxOutputTokens: 16384,
     supportedParams: {
       temperature: false,
       max_tokens: true,
@@ -82,6 +86,8 @@ const PROVIDERS: ProviderConfig[] = [
     name: "OpenAI",
     defaultUrl: "https://api.openai.com/v1",
     needsApiKey: true,
+    recommendedMaxTokens: 8000,
+    maxOutputTokens: 16384,
     supportedParams: {
       temperature: true,
       max_tokens: true,
@@ -95,6 +101,8 @@ const PROVIDERS: ProviderConfig[] = [
     name: "Anthropic",
     defaultUrl: "https://api.anthropic.com",
     needsApiKey: true,
+    recommendedMaxTokens: 6000,
+    maxOutputTokens: 8192,
     supportedParams: {
       temperature: true,
       max_tokens: true,
@@ -108,6 +116,8 @@ const PROVIDERS: ProviderConfig[] = [
     name: "Zhipu AI (智谱)",
     defaultUrl: "https://open.bigmodel.cn/api/paas/v4",
     needsApiKey: true,
+    recommendedMaxTokens: 12000,
+    maxOutputTokens: 32768,
     supportedParams: {
       temperature: true,
       max_tokens: true,
@@ -121,6 +131,8 @@ const PROVIDERS: ProviderConfig[] = [
     name: "Azure OpenAI",
     defaultUrl: "",
     needsApiKey: true,
+    recommendedMaxTokens: 8000,
+    maxOutputTokens: 16384,
     supportedParams: {
       temperature: true,
       max_tokens: true,
@@ -134,6 +146,8 @@ const PROVIDERS: ProviderConfig[] = [
     name: "Ollama (Local)",
     defaultUrl: "http://localhost:11434/v1",
     needsApiKey: false,
+    recommendedMaxTokens: 8000,
+    maxOutputTokens: 4096,
     supportedParams: {
       temperature: true,
       max_tokens: true,
@@ -147,6 +161,8 @@ const PROVIDERS: ProviderConfig[] = [
     name: "Custom",
     defaultUrl: "",
     needsApiKey: true,
+    recommendedMaxTokens: 8000,
+    maxOutputTokens: 16000,
     supportedParams: {
       temperature: true,
       max_tokens: true,
@@ -179,7 +195,7 @@ const defaultFormData: AgentFormData = {
   api_key: "",
   model: "",
   temperature: 0.1,
-  max_tokens: 4000,
+  max_tokens: 6000,
   top_p: 0.9,
   frequency_penalty: 0,
   presence_penalty: 0,
@@ -297,6 +313,7 @@ export function AgentSettingsPage() {
       provider,
       api_base_url: providerConfig?.defaultUrl || prev.api_base_url,
       api_key: providerConfig?.needsApiKey ? prev.api_key : "",
+      max_tokens: providerConfig?.recommendedMaxTokens || prev.max_tokens,
     }));
     setAvailableModels([]);
     setHasChanges(true);
@@ -677,19 +694,29 @@ export function AgentSettingsPage() {
                       {/* Max Tokens - Conditional display based on provider support */}
                       {providerConfig.supportedParams.max_tokens && (
                         <Box>
-                          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
-                            <Typography variant="body2">Max Tokens</Typography>
-                            <Tooltip title="Maximum number of tokens for SQL query and explanation. Recommended: 2000-4000 for accurate SQL generation" arrow placement="top">
-                              <HelpIcon sx={{ fontSize: 18, cursor: "pointer" }} />
-                            </Tooltip>
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1, justifyContent: "space-between" }}>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                              <Typography variant="body2">Max Tokens</Typography>
+                              <Tooltip title={`Maximum number of tokens for SQL query and explanation. Recommended: ${providerConfig.recommendedMaxTokens} tokens for ${providerConfig.name} (Max: ${providerConfig.maxOutputTokens})`} arrow placement="top">
+                                <HelpIcon sx={{ fontSize: 18, cursor: "pointer" }} />
+                              </Tooltip>
+                            </Box>
+                            <Typography variant="body2" sx={{ fontWeight: "bold", color: formData.max_tokens > providerConfig.maxOutputTokens ? "error.main" : "inherit" }}>
+                              {formData.max_tokens}
+                            </Typography>
                           </Box>
                           <TextField
                             type="number"
                             value={formData.max_tokens}
-                            onChange={(e) => handleFieldChange("max_tokens", parseInt(e.target.value) || 4000)}
+                            onChange={(e) => handleFieldChange("max_tokens", parseInt(e.target.value) || providerConfig.recommendedMaxTokens)}
                             fullWidth
                             size="small"
-                            inputProps={{ min: 100, max: 16000 }}
+                            inputProps={{ 
+                              min: 100, 
+                              max: providerConfig.maxOutputTokens 
+                            }}
+                            error={formData.max_tokens > providerConfig.maxOutputTokens}
+                            helperText={formData.max_tokens > providerConfig.maxOutputTokens ? `Exceeds ${providerConfig.name} maximum of ${providerConfig.maxOutputTokens}` : ""}
                           />
                         </Box>
                       )}

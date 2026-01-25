@@ -308,7 +308,13 @@ class ApiClient {
   async executeNaturalLanguageQuery(
     connectionId: string | number | undefined,
     query: string,
-    options?: { connectionSessionId?: string; chatSessionId?: string },
+    options?: { 
+      connectionSessionId?: string; 
+      chatSessionId?: string;
+      agentId?: number;
+      agentProvider?: string;
+      model?: string;
+    },
   ): Promise<{
     success: boolean;
     data?: any;
@@ -322,6 +328,9 @@ class ApiClient {
       connectionSessionId: options?.connectionSessionId,
       chatSessionId: options?.chatSessionId,
       naturalLanguage: query,
+      agentId: options?.agentId,
+      agentProvider: options?.agentProvider,
+      model: options?.model,
     });
     // Return the full response which includes success, data, explanation, etc.
     return response;
@@ -491,6 +500,20 @@ class ApiClient {
     return supportMap[provider] || supportMap.custom;
   }
 
+  // Get provider maximum output tokens
+  private getProviderMaxOutputTokens(provider: string): number {
+    const maxOutputMap: Record<string, number> = {
+      copilot: 16384,
+      openai: 16384,
+      anthropic: 8192,
+      zhipu: 32768,
+      azure: 16384,
+      ollama: 4096,
+      custom: 16000,
+    };
+    return maxOutputMap[provider] || 16000;
+  }
+
   // Chat with specific agent
   async chatWithAgent(agent: AIAgent, prompt: string, context?: string): Promise<{ success: boolean; response?: string; error?: string }> {
     try {
@@ -516,6 +539,15 @@ class ApiClient {
 
       // Get provider support and only include supported parameters
       const support = this.getProviderSupport(agent.provider);
+      const maxOutputTokens = this.getProviderMaxOutputTokens(agent.provider);
+
+      // Validate max_tokens against provider limit
+      if (agent.max_tokens && agent.max_tokens > maxOutputTokens) {
+        return {
+          success: false,
+          error: `max_tokens (${agent.max_tokens}) exceeds ${agent.provider} maximum (${maxOutputTokens})`
+        };
+      }
 
       const body: any = {
         model: agent.model,
@@ -524,7 +556,7 @@ class ApiClient {
 
       // Only include parameters that are supported by the provider
       if (support.temperature) body.temperature = agent.temperature;
-      if (support.max_tokens) body.max_tokens = agent.max_tokens;
+      if (support.max_tokens && agent.max_tokens > 0) body.max_tokens = agent.max_tokens;
       if (support.top_p) body.top_p = agent.top_p;
       if (support.frequency_penalty) body.frequency_penalty = agent.frequency_penalty;
       if (support.presence_penalty) body.presence_penalty = agent.presence_penalty;

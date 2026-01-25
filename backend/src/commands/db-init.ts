@@ -8,6 +8,7 @@
 // - Default data (system user, default workspace, AI agents)
 //
 // Usage: npm run db:init
+//
 
 import Database from "better-sqlite3";
 import path from "path";
@@ -25,10 +26,10 @@ const db = new Database(dbPath);
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 
-console.log("🔧 Initializing DataLoom database...");
+console.log(" Initializing DataLoom database...");
 
 // Create all tables
-console.log("📋 Creating tables...");
+console.log(" Creating tables...");
 db.exec(`
   -- Users table
   CREATE TABLE IF NOT EXISTS users (
@@ -126,9 +127,9 @@ db.exec(`
     model TEXT,
     api_key TEXT,
     api_base_url TEXT NOT NULL,
-    temperature REAL DEFAULT 0.7,
-    max_tokens INT DEFAULT 2000,
-    top_p REAL DEFAULT 1.0,
+    temperature REAL DEFAULT 0.1,
+    max_tokens INT DEFAULT 6000,
+    top_p REAL DEFAULT 0.9,
     frequency_penalty REAL DEFAULT 0.0,
     presence_penalty REAL DEFAULT 0.0,
     is_default BOOLEAN DEFAULT 0,
@@ -139,10 +140,10 @@ db.exec(`
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
-console.log("✅ Tables created");
+console.log(" Tables created");
 
 // Create indexes
-console.log("📑 Creating indexes...");
+console.log(" Creating indexes...");
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_workspaces_user_id ON workspaces(user_id);
   CREATE INDEX IF NOT EXISTS idx_database_connections_workspace_id ON database_connections(workspace_id);
@@ -150,10 +151,10 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_column_explanations_table_explanation_id ON column_explanations(table_explanation_id);
   CREATE INDEX IF NOT EXISTS idx_sql_examples_connection_id ON sql_examples(database_connection_id);
 `);
-console.log("✅ Indexes created");
+console.log(" Indexes created");
 
 // Insert default data
-console.log("🌱 Seeding default data...");
+console.log(" Seeding default data...");
 
 // Check if default user exists
 const existingUser = db.prepare("SELECT * FROM users WHERE id = ?").get(1) as any;
@@ -161,25 +162,25 @@ const existingUser = db.prepare("SELECT * FROM users WHERE id = ?").get(1) as an
 if (!existingUser) {
   // Insert default user
   db.prepare("INSERT INTO users (id, name, email) VALUES (?, ?, ?)").run(1, "System", "system@example.com");
-  console.log("  ✅ Created default user: System (system@example.com)");
+  console.log("  Created default user: System (system@example.com)");
 
   // Insert default workspace
   db.prepare("INSERT INTO workspaces (id, user_id, name) VALUES (?, ?, ?)").run(1, 1, "default");
-  console.log("  ✅ Created default workspace: default");
+  console.log("  Created default workspace: default");
 
   // Insert default Copilot agent
   db.prepare(
     `
-    INSERT INTO ai_agents (id, name, provider, model, api_base_url, is_default, temperature, max_tokens)
+    INSERT INTO ai_agents (id, name, provider, model, api_base_url, is_default, temperature, max_tokens, top_p)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `,
-  ).run(1, "Copilot", "copilot", "gpt-5-mini", "http://localhost:1287", 1, 0.7, 4000);
-  console.log("  ✅ Created default AI agent: Copilot");
+    `,
+  ).run(1, "Copilot", "copilot", "gpt-5-mini", "http://localhost:1287", 1, 0.1, 6000, 0.9);
+  console.log("  Created default AI agent: Copilot");
 } else {
-  console.log("  ℹ️  Default user already exists, skipping seed data");
+  console.log("  Default user already exists, skipping seed data");
 }
 
 db.close();
 
-console.log("\n✨ Database initialization completed successfully!");
-console.log(`📁 Database path: ${dbPath}`);
+console.log("\n Database initialization completed successfully!");
+console.log(` Database path: ${dbPath}`);

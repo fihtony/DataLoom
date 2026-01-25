@@ -7,12 +7,15 @@ import { z } from "zod";
 import { executeSafeQuery } from "../services/database/queryExecutor.js";
 import { SQLValidator } from "../services/database/sqlValidator.js";
 import { buildAIPrompt } from "../services/copilot/contextBuilder.js";
-import { chat, checkCopilotBridge, getAvailableModels } from "../services/copilot/copilotClient.js";
+import { agentService, type AIAgentConfig } from "../services/agent/index.js";
+import { getAvailableModels } from "../services/copilot/copilotClient.js";
 import * as connectionManager from "../services/database/connectionManager.js";
 import {
   getTableExplanationsByConnection,
   getColumnExplanationsByTable,
   getSqlExamplesByConnection,
+  getAiAgent,
+  getDefaultAiAgent,
 } from "../services/dataloom/databaseService.js";
 import { logger } from "../utils/logger.js";
 import type { LegendItem } from "../types/index.js";
@@ -178,13 +181,16 @@ const QuerySchema = z.object({
   connectionId: z.number().optional(), // Legacy: fallback if no connectionSessionId
   chatSessionId: z.string().uuid().optional(), // Optional, backend creates one if missing
   naturalLanguage: z.string().min(1).max(2000),
-  model: z
-    .object({
+  agentId: z.number().optional(), // AI Agent ID
+  agentProvider: z.string().optional(), // AI Agent provider type
+  model: z.union([
+    z.object({
       id: z.string(),
       name: z.string(),
       vendor: z.string(),
-    })
-    .optional(),
+    }),
+    z.string(),
+  ]).optional(),
 });
 
 const ExecuteSQLSchema = z.object({
@@ -206,7 +212,7 @@ router.post("/", async (req: Request, res: Response) => {
       });
     }
 
-    let { connectionSessionId, connectionId, chatSessionId, naturalLanguage, model } = parsed.data;
+    let { connectionSessionId, connectionId, chatSessionId, naturalLanguage, model, agentId, agentProvider } = parsed.data;
 
     // Resolve connectionId from session or legacy connectionId
     if (connectionSessionId) {
@@ -229,6 +235,47 @@ router.post("/", async (req: Request, res: Response) => {
       });
     }
 
+    // Get the AI agent - use provided agent or default
+    let selectedAgent: AIAgentConfig | null = null;
+    if (agentId && agentProvider) {
+      const agent = getAiAgent(agentId);
+      if (agent) {
+        selectedAgent = agent;
+      } else {
+        logger.warn(`AI Agent not found: ${agentId}, falling back to default`);
+        selectedAgent = getDefaultAiAgent() || null;
+      }
+    } else {
+      selectedAgent = getDefaultAiAgent() || null;
+    }
+
+    // Validate agent is available
+    if (!selectedAgent) {
+      return res.status(400).json({
+        success: false,
+        error: "No AI agent configured. Please configure an agent in Agent Settings.",
+        errorCode: "NO_AGENT",
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // Determine model to use
+    let chatModel: string;
+    if (typeof model === "string") {
+      chatModel = model;
+    } else if (model && typeof model === "object" && "id" in model) {
+      chatModel = model.id;
+    } else if (selectedAgent.model) {
+      chatModel = selectedAgent.model;
+    } else {
+      chatModel = "gpt-4o"; // Ultimate fallback
+    }
+
+    logger.info(`[Query] Using AI Agent: ${selectedAgent.name}, Provider: ${selectedAgent.provider}, Model: ${chatModel}`);
+
+    // Check agent provider availability
+    const providerStatus = await agentService.checkAvailability(selectedAgent);
+
     // Handle chat session
     let isFollowUp = false;
     if (chatSessionId) {
@@ -248,14 +295,11 @@ router.post("/", async (req: Request, res: Response) => {
       isFollowUp = false;
     }
 
-    // Check CopilotBridge availability
-    const copilotAvailable = await checkCopilotBridge();
-
     let extractedSQL: string | null = null;
     let explanation: string | null = null;
     let visualization: any = null;
 
-    if (copilotAvailable) {
+    if (providerStatus.available) {
       // Build AI prompt based on whether this is a follow-up question
       let prompt: string;
 
@@ -381,11 +425,12 @@ router.post("/", async (req: Request, res: Response) => {
       logger.debug(promptPreview);
       logger.info(`[Prompt] Total prompt lines: ${promptLines.length}`);
 
-      // Call CopilotBridge
-      const aiResponse = await chat({
+      // Call AI using AgentService
+      const aiResponse = await agentService.chat(selectedAgent, {
         prompt,
-        model,
+        model: chatModel,
         timeout: 60000,
+        maxTokens: selectedAgent.max_tokens,
       });
 
       if (!aiResponse.success || !aiResponse.response) {
@@ -429,18 +474,18 @@ router.post("/", async (req: Request, res: Response) => {
       }
     } else {
       // Fallback: Try simple pattern matching for common queries
-      logger.warn(`CopilotBridge unavailable, using simple pattern matching for: ${naturalLanguage}`);
+      logger.warn(`AI provider unavailable (${selectedAgent.provider}), using simple pattern matching for: ${naturalLanguage}`);
       extractedSQL = await generateSimpleSQL(naturalLanguage, connectionId);
     }
 
     if (!extractedSQL) {
-      const errorMsg = copilotAvailable
+      const errorMsg = providerStatus.available
         ? "AI did not generate a valid SQL query"
-        : "Could not generate SQL from natural language. Try using direct SQL execution or connect CopilotBridge.";
+        : `Could not generate SQL from natural language. AI provider (${selectedAgent.provider}) is not available: ${providerStatus.error || "Unknown error"}`;
       return res.status(400).json({
         success: false,
         error: errorMsg,
-        errorCode: copilotAvailable ? "NO_SQL_GENERATED" : "COPILOT_UNAVAILABLE",
+        errorCode: providerStatus.available ? "NO_SQL_GENERATED" : "PROVIDER_UNAVAILABLE",
         sql: null,
         chatSessionId,
         timestamp: new Date().toISOString(),
@@ -449,7 +494,7 @@ router.post("/", async (req: Request, res: Response) => {
 
     // Validate and execute SQL
     // Mark as trusted if generated by our pattern matcher (safer than user input)
-    const isTrusted = !copilotAvailable;
+    const isTrusted = !providerStatus.available;
     const result = await executeSafeQuery(connectionId, extractedSQL, isTrusted);
 
     if (!result.success) {

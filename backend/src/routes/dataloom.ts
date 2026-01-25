@@ -55,7 +55,7 @@ import {
   clearKnowledgeBase,
   type AnalysisResult,
 } from "../services/dataloom/knowledgeBaseService.js";
-import { chat } from "../services/copilot/copilotClient.js";
+import { agentService, type AIAgentConfig } from "../services/agent/index.js";
 
 const router = Router();
 
@@ -356,28 +356,35 @@ router.post("/connections/:id/analyze", async (req: Request, res: Response) => {
     }
 
     // Get the AI agent - use provided agent or default
-    let selectedAgent = null;
+    let selectedAgent: AIAgentConfig | null = null;
     let chatModel = model;
 
     if (agentId && agentProvider) {
-      selectedAgent = getAiAgent(parseInt(agentId));
-      if (!selectedAgent) {
+      const agent = getAiAgent(parseInt(agentId));
+      if (agent) {
+        selectedAgent = agent;
+      } else {
         logger.warn(`AI Agent not found: ${agentId}, falling back to default`);
-        selectedAgent = getDefaultAiAgent();
+        selectedAgent = getDefaultAiAgent() || null;
       }
     } else {
-      selectedAgent = getDefaultAiAgent();
+      selectedAgent = getDefaultAiAgent() || null;
+    }
+
+    // Validate agent is available
+    if (!selectedAgent) {
+      return res.status(400).json({ error: "No AI agent configured. Please configure an agent in Agent Settings." });
     }
 
     // Priority: use model parameter if provided, then agent's model, then fallback
-    if (!chatModel && selectedAgent && selectedAgent.model) {
+    if (!chatModel && selectedAgent.model) {
       chatModel = selectedAgent.model;
     }
     if (!chatModel) {
       chatModel = "gpt-4o"; // Ultimate fallback
     }
 
-    logger.info(`[ANALYZE] Using AI Agent: ${selectedAgent?.name || "default"}, Provider: ${selectedAgent?.provider}, Model: ${chatModel}`);
+    logger.info(`[ANALYZE] Using AI Agent: ${selectedAgent.name}, Provider: ${selectedAgent.provider}, Model: ${chatModel}`);
 
     // Get existing knowledge base
     const existingKnowledge = getFullKnowledgeBase(connectionId);
@@ -429,13 +436,13 @@ router.post("/connections/:id/analyze", async (req: Request, res: Response) => {
     logger.debug(`[ANALYZE-PHASE1] First 100 lines of phase 1 prompt:\n${phase1Prompt.split("\n").slice(0, 100).join("\n")}`);
 
     logger.info(`[ANALYZE-PHASE1] Sending Phase 1 prompt to AI (${chatModel})...`);
-    logger.info(`[ANALYZE-PHASE1] Agent max_tokens: ${selectedAgent?.max_tokens || "not set"}`);
+    logger.info(`[ANALYZE-PHASE1] Agent max_tokens: ${selectedAgent.max_tokens || "not set"}`);
 
-    const phase1Response = await chat({
+    const phase1Response = await agentService.chat(selectedAgent, {
       prompt: phase1Prompt,
       model: chatModel,
       timeout: 120000, // 2 minutes for Phase 1
-      maxToken: selectedAgent?.max_tokens || undefined,
+      maxTokens: selectedAgent.max_tokens || undefined,
       sessionId: analysisSessionId, // Use same session for all phases
     });
 
@@ -446,11 +453,11 @@ router.post("/connections/:id/analyze", async (req: Request, res: Response) => {
       // Fallback: Try simplified analysis with Phase 1 only
       try {
         const simplifiedPrompt = await buildPhase1Prompt(connectionId);
-        const retryResponse = await chat({
+        const retryResponse = await agentService.chat(selectedAgent, {
           prompt: simplifiedPrompt,
           model: chatModel,
           timeout: 180000, // 3 minutes for retry
-          maxToken: selectedAgent?.max_tokens || undefined,
+          maxTokens: selectedAgent.max_tokens || undefined,
           sessionId: `${analysisSessionId}_retry`,
         });
 
@@ -520,13 +527,13 @@ router.post("/connections/:id/analyze", async (req: Request, res: Response) => {
     logger.debug(`[ANALYZE-PHASE2] First 100 lines of phase 2 prompt:\n${phase2Prompt.split("\n").slice(0, 100).join("\n")}`);
 
     logger.info(`[ANALYZE-PHASE2] Sending Phase 2 prompt to AI (${chatModel})...`);
-    logger.info(`[ANALYZE-PHASE2] Agent max_tokens: ${selectedAgent?.max_tokens || "not set"}`);
+    logger.info(`[ANALYZE-PHASE2] Agent max_tokens: ${selectedAgent.max_tokens || "not set"}`);
 
-    const phase2Response = await chat({
+    const phase2Response = await agentService.chat(selectedAgent, {
       prompt: phase2Prompt,
       model: chatModel,
       timeout: 120000, // 2 minutes for Phase 2
-      maxToken: selectedAgent?.max_tokens || undefined,
+      maxTokens: selectedAgent.max_tokens || undefined,
       sessionId: analysisSessionId, // Use same session for all phases
     });
 
@@ -586,13 +593,13 @@ router.post("/connections/:id/analyze", async (req: Request, res: Response) => {
     logger.debug(`[ANALYZE-PHASE3] First 100 lines of phase 3 prompt:\n${phase3Prompt.split("\n").slice(0, 100).join("\n")}`);
 
     logger.info(`[ANALYZE-PHASE3] Sending Phase 3 prompt to AI (${chatModel})...`);
-    logger.info(`[ANALYZE-PHASE3] Agent max_tokens: ${selectedAgent?.max_tokens || "not set"}`);
+    logger.info(`[ANALYZE-PHASE3] Agent max_tokens: ${selectedAgent.max_tokens || "not set"}`);
 
-    const phase3Response = await chat({
+    const phase3Response = await agentService.chat(selectedAgent, {
       prompt: phase3Prompt,
       model: chatModel,
       timeout: 120000, // 2 minutes for Phase 3
-      maxToken: selectedAgent?.max_tokens || undefined,
+      maxTokens: selectedAgent.max_tokens || undefined,
       sessionId: analysisSessionId, // Use same session for all phases
     });
 
