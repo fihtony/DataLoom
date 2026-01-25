@@ -2,6 +2,7 @@
 // Pie Chart Component
 // =============================================================================
 
+import { useState, useCallback, useMemo } from "react";
 import { Box, Typography } from "@mui/material";
 import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from "recharts";
 import { findLegendItem, getActualDataKey, getCaseInsensitiveValue } from "./chartUtils";
@@ -103,6 +104,249 @@ function generateColorPalette(baseColor: string, count: number): string[] {
   return palette;
 }
 
+// Single pie chart with two layers: base layer + active overlay for proper z-order
+function SinglePieChart({
+  chartData,
+  pieColors,
+  pieTitle,
+}: {
+  chartData: Array<{ name: string; value: number }>;
+  pieColors: string[];
+  pieTitle: string;
+}) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+
+  // Calculate total for percentage
+  const total = useMemo(() => chartData.reduce((sum, item) => sum + item.value, 0), [chartData]);
+
+  // Custom label renderer - shows name, value and percentage
+  const renderCustomLabel = useCallback((props: any) => {
+    const { cx, cy, midAngle, outerRadius, value, percent, index, name } = props;
+    const isActive = activeIndex === index;
+    const radius = outerRadius + 35;
+    const x = cx + radius * Math.cos((-midAngle * Math.PI) / 180);
+    const y = cy + radius * Math.sin((-midAngle * Math.PI) / 180);
+    
+    // Truncate long names
+    const maxNameLength = 20;
+    const displayName = name.length > maxNameLength 
+      ? name.substring(0, maxNameLength) + "..." 
+      : name;
+    
+    return (
+      <text
+        x={x}
+        y={y}
+        fill="#333333"
+        textAnchor={x > cx ? "start" : "end"}
+        dominantBaseline="central"
+        fontSize={isActive ? "11" : "9"}
+        fontWeight={isActive ? "bold" : "normal"}
+      >
+        <tspan>{displayName}</tspan>
+        <tspan x={x} dy="1.2em" fontSize={isActive ? "10" : "9"}>
+          {`${value.toLocaleString()} (${(percent * 100).toFixed(1)}%)`}
+        </tspan>
+      </text>
+    );
+  }, [activeIndex]);
+  
+  // Custom label line renderer - thicker when active
+  const renderCustomLabelLine = useCallback((props: any) => {
+    const { cx, cy, midAngle, outerRadius, points, index } = props;
+    const isActive = activeIndex === index;
+    
+    // Calculate the start point (on the pie edge)
+    const startX = cx + outerRadius * Math.cos((-midAngle * Math.PI) / 180);
+    const startY = cy + outerRadius * Math.sin((-midAngle * Math.PI) / 180);
+    
+    // Use the end point from props
+    const endPoint = points?.[1] || { x: startX + 20, y: startY };
+    
+    return (
+      <polyline
+        points={`${startX},${startY} ${endPoint.x},${endPoint.y}`}
+        stroke={isActive ? "#333" : "#999"}
+        strokeWidth={isActive ? 2 : 1}
+        fill="none"
+      />
+    );
+  }, [activeIndex]);
+
+  const handleMouseEnter = useCallback((_: any, index: number) => {
+    setActiveIndex(index);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    setActiveIndex(null);
+  }, []);
+
+  // Create overlay data - only the active slice
+  const overlayData = useMemo(() => {
+    if (activeIndex === null) return [];
+    
+    // We need to create data that positions the slice correctly
+    // This means we need to include all slices but make inactive ones have 0 value display
+    return chartData.map((item, index) => ({
+      ...item,
+      // Keep all values for correct positioning, we'll hide non-active with opacity
+      displayValue: index === activeIndex ? item.value : item.value,
+      isActive: index === activeIndex,
+    }));
+  }, [chartData, activeIndex]);
+
+  // Custom legend renderer to highlight active item with text truncation
+  const renderLegend = useCallback((props: any) => {
+    const { payload } = props;
+    // Filter to only show unique entries by name (base layer only)
+    const seenNames = new Set<string>();
+    const baseLayerPayload = payload.filter((entry: any) => {
+      const name = entry.payload?.name || entry.value;
+      if (seenNames.has(name)) return false;
+      seenNames.add(name);
+      return true;
+    });
+    
+    return (
+      <ul style={{ listStyle: "none", padding: 0, margin: 0, maxWidth: "300px" }}>
+        {baseLayerPayload.map((entry: any, index: number) => {
+          const isActive = activeIndex === index;
+          return (
+            <li
+              key={`legend-${index}`}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                marginBottom: "4px",
+                fontWeight: isActive ? "bold" : "normal",
+                fontSize: isActive ? "12px" : "11px",
+              }}
+              onMouseEnter={() => setActiveIndex(index)}
+              onMouseLeave={() => setActiveIndex(null)}
+            >
+              <span
+                style={{
+                  display: "inline-block",
+                  flexShrink: 0,
+                  width: isActive ? "14px" : "10px",
+                  height: isActive ? "14px" : "10px",
+                  backgroundColor: entry.color,
+                  marginRight: "8px",
+                  marginTop: "3px",
+                  borderRadius: "2px",
+                  transition: "all 0.15s ease-out",
+                }}
+              />
+              <span 
+                style={{ 
+                  color: entry.color,
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  lineHeight: "1.3",
+                  maxWidth: "280px",
+                  wordBreak: "break-all",
+                }}
+                title={entry.value}
+              >
+                {entry.value}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }, [activeIndex]);
+
+  return (
+    <Box sx={{ flex: 1, minWidth: "400px" }}>
+      <Typography variant="body2" sx={{ mb: 1, fontWeight: "bold", textAlign: "center" }}>
+        {pieTitle}
+      </Typography>
+      <ResponsiveContainer width="100%" height={350}>
+        <PieChart>
+          {/* Base layer - all slices */}
+          <Pie
+            data={chartData}
+            cx="50%"
+            cy="50%"
+            labelLine={renderCustomLabelLine}
+            label={renderCustomLabel}
+            outerRadius={120}
+            fill="#8884d8"
+            dataKey="value"
+            isAnimationActive={false}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+            stroke="#fff"
+            strokeWidth={1}
+          >
+            {chartData.map((_, index) => (
+              <Cell 
+                key={`cell-base-${index}`} 
+                fill={pieColors[index % pieColors.length]}
+              />
+            ))}
+          </Pie>
+          
+          {/* Overlay layer - only active slice, rendered on top */}
+          {activeIndex !== null && (
+            <Pie
+              data={overlayData}
+              cx="50%"
+              cy="50%"
+              outerRadius={130}
+              innerRadius={0}
+              fill="transparent"
+              dataKey="value"
+              isAnimationActive={false}
+              legendType="none"
+              stroke="#fff"
+              strokeWidth={1}
+            >
+              {overlayData.map((entry, index) => (
+                <Cell 
+                  key={`cell-overlay-${index}`}
+                  fill={entry.isActive ? pieColors[index % pieColors.length] : "transparent"}
+                  stroke={entry.isActive ? "#fff" : "transparent"}
+                  strokeWidth={1}
+                  style={{
+                    filter: entry.isActive ? "drop-shadow(2px 2px 4px rgba(0,0,0,0.4))" : "none",
+                    pointerEvents: "none",
+                  }}
+                />
+              ))}
+            </Pie>
+          )}
+          
+          <Tooltip
+            formatter={(value) =>
+              `${(value as number).toLocaleString()} (${((value as number) / total * 100).toFixed(1)}%)`
+            }
+            contentStyle={{
+              fontSize: "12px",
+              padding: "0px 5px",
+              backgroundColor: "rgba(255, 255, 255, 0.95)",
+              border: "1px solid #ccc",
+            }}
+          />
+          <Legend
+            layout="vertical"
+            align="right"
+            verticalAlign="middle"
+            content={renderLegend}
+            wrapperStyle={{
+              paddingLeft: "20px",
+            }}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+    </Box>
+  );
+}
+
 export function PieChartComponent({ data, nameKey, valueKey, title, colors = DEFAULT_COLORS, yAxisList = [], legend = [] }: PieChartProps) {
   // If yAxisList has values, use those; otherwise use just valueKey
   const valueKeys = yAxisList && yAxisList.length > 0 ? yAxisList : [valueKey];
@@ -127,68 +371,12 @@ export function PieChartComponent({ data, nameKey, valueKey, title, colors = DEF
     const pieColors = generateColorPalette(baseColor, chartData.length);
 
     return (
-      <Box key={key} sx={{ flex: 1, minWidth: "400px" }}>
-        <Typography variant="body2" sx={{ mb: 1, fontWeight: "bold", textAlign: "center" }}>
-          {pieTitle}
-        </Typography>
-        <ResponsiveContainer width="100%" height={350}>
-          <PieChart>
-            <Pie
-              data={chartData}
-              cx="50%"
-              cy="50%"
-              labelLine={true}
-              label={(props: any) => {
-                const { cx, cy, midAngle, outerRadius, value, percent } = props;
-                // Position label outside the pie chart, with some padding
-                const radius = outerRadius + 35;
-                const x = cx + radius * Math.cos((-midAngle * Math.PI) / 180);
-                const y = cy + radius * Math.sin((-midAngle * Math.PI) / 180);
-                return (
-                  <text
-                    x={x}
-                    y={y}
-                    fill="#333333"
-                    textAnchor={x > cx ? "start" : "end"}
-                    dominantBaseline="central"
-                    fontSize="10"
-                    fontWeight="bold"
-                  >
-                    {`${value} (${(percent * 100).toFixed(1)}%)`}
-                  </text>
-                );
-              }}
-              outerRadius={120}
-              fill="#8884d8"
-              dataKey="value"
-            >
-              {chartData.map((_, index) => (
-                <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
-              ))}
-            </Pie>
-            <Tooltip
-              formatter={(value) =>
-                `${value} (${(((value as number) / chartData.reduce((sum, item) => sum + item.value, 0)) * 100).toFixed(1)}%)`
-              }
-              contentStyle={{
-                fontSize: "12px",
-                padding: "0px 5px",
-                backgroundColor: "rgba(255, 255, 255, 0.95)",
-                border: "1px solid #ccc",
-              }}
-            />
-            <Legend
-              layout="vertical"
-              align="right"
-              verticalAlign="middle"
-              wrapperStyle={{
-                paddingLeft: "20px",
-                fontSize: "11px",
-              }}
-            />
-          </PieChart>
-        </ResponsiveContainer>
-      </Box>
+      <SinglePieChart
+        key={key}
+        chartData={chartData}
+        pieColors={pieColors}
+        pieTitle={pieTitle}
+      />
     );
   };
 
