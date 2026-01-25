@@ -47,13 +47,114 @@ import { useStore } from "../../store";
 import type { AIAgent, AIModel } from "../../types";
 import { api } from "../../services/api";
 
-const PROVIDERS = [
-  { id: "copilot", name: "GitHub Copilot", defaultUrl: "http://localhost:1287", needsApiKey: false },
-  { id: "openai", name: "OpenAI", defaultUrl: "https://api.openai.com/v1", needsApiKey: true },
-  { id: "anthropic", name: "Anthropic", defaultUrl: "https://api.anthropic.com", needsApiKey: true },
-  { id: "azure", name: "Azure OpenAI", defaultUrl: "", needsApiKey: true },
-  { id: "ollama", name: "Ollama (Local)", defaultUrl: "http://localhost:11434/v1", needsApiKey: false },
-  { id: "custom", name: "Custom", defaultUrl: "", needsApiKey: true },
+// Provider parameter support configuration
+interface ProviderConfig {
+  id: string;
+  name: string;
+  defaultUrl: string;
+  needsApiKey: boolean;
+  supportedParams: {
+    temperature: boolean;
+    max_tokens: boolean;
+    top_p: boolean;
+    frequency_penalty: boolean;
+    presence_penalty: boolean;
+  };
+}
+
+// Provider configuration with supported parameters
+const PROVIDERS: ProviderConfig[] = [
+  {
+    id: "copilot",
+    name: "GitHub Copilot",
+    defaultUrl: "http://localhost:1287",
+    needsApiKey: false,
+    supportedParams: {
+      temperature: false,
+      max_tokens: true,
+      top_p: false,
+      frequency_penalty: false,
+      presence_penalty: false,
+    },
+  },
+  {
+    id: "openai",
+    name: "OpenAI",
+    defaultUrl: "https://api.openai.com/v1",
+    needsApiKey: true,
+    supportedParams: {
+      temperature: true,
+      max_tokens: true,
+      top_p: true,
+      frequency_penalty: true,
+      presence_penalty: true,
+    },
+  },
+  {
+    id: "anthropic",
+    name: "Anthropic",
+    defaultUrl: "https://api.anthropic.com",
+    needsApiKey: true,
+    supportedParams: {
+      temperature: true,
+      max_tokens: true,
+      top_p: true,
+      frequency_penalty: false,
+      presence_penalty: false,
+    },
+  },
+  {
+    id: "zhipu",
+    name: "Zhipu AI (智谱)",
+    defaultUrl: "https://open.bigmodel.cn/api/paas/v4",
+    needsApiKey: true,
+    supportedParams: {
+      temperature: true,
+      max_tokens: true,
+      top_p: true,
+      frequency_penalty: false,
+      presence_penalty: false,
+    },
+  },
+  {
+    id: "azure",
+    name: "Azure OpenAI",
+    defaultUrl: "",
+    needsApiKey: true,
+    supportedParams: {
+      temperature: true,
+      max_tokens: true,
+      top_p: true,
+      frequency_penalty: true,
+      presence_penalty: true,
+    },
+  },
+  {
+    id: "ollama",
+    name: "Ollama (Local)",
+    defaultUrl: "http://localhost:11434/v1",
+    needsApiKey: false,
+    supportedParams: {
+      temperature: true,
+      max_tokens: true,
+      top_p: true,
+      frequency_penalty: false,
+      presence_penalty: false,
+    },
+  },
+  {
+    id: "custom",
+    name: "Custom",
+    defaultUrl: "",
+    needsApiKey: true,
+    supportedParams: {
+      temperature: true,
+      max_tokens: true,
+      top_p: true,
+      frequency_penalty: true,
+      presence_penalty: true,
+    },
+  },
 ];
 
 interface AgentFormData {
@@ -77,9 +178,9 @@ const defaultFormData: AgentFormData = {
   api_base_url: "http://localhost:1287",
   api_key: "",
   model: "",
-  temperature: 0.7,
-  max_tokens: 2000,
-  top_p: 1,
+  temperature: 0.1,
+  max_tokens: 4000,
+  top_p: 0.9,
   frequency_penalty: 0,
   presence_penalty: 0,
   is_default: 0,
@@ -529,129 +630,163 @@ export function AgentSettingsPage() {
                 </Box>
 
                 {/* Advanced Parameters */}
-                <Box sx={{ gridColumn: "1 / -1" }}>
-                  <Divider sx={{ my: 2 }}>
-                    <Chip label="Advanced Parameters" size="small" />
-                  </Divider>
-                </Box>
-
-                <Box sx={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
-                  <Box>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1, justifyContent: "space-between" }}>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <Typography variant="body2">Temperature</Typography>
-                        <Tooltip
-                          title="Controls randomness in responses. Higher = more creative, Lower = more focused"
-                          arrow
-                          placement="top"
-                        >
-                          <HelpIcon sx={{ fontSize: 18, cursor: "pointer" }} />
-                        </Tooltip>
-                      </Box>
-                      <Typography variant="body2" sx={{ fontWeight: "bold" }}>
-                        {formData.temperature}
-                      </Typography>
+                {providerConfig && (
+                  <>
+                    <Box sx={{ gridColumn: "1 / -1" }}>
+                      <Divider sx={{ my: 2 }}>
+                        <Chip label="Advanced Parameters" size="small" />
+                      </Divider>
                     </Box>
 
-                    <Slider
-                      value={formData.temperature}
-                      onChange={(_, value) => handleFieldChange("temperature", value)}
-                      min={0}
-                      max={2}
-                      step={0.1}
-                      marks={[
-                        { value: 0, label: "0" },
-                        { value: 1, label: "1" },
-                        { value: 2, label: "2" },
-                      ]}
-                    />
-                  </Box>
+                    <Box sx={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
+                      {/* Temperature - Conditional display based on provider support */}
+                      {providerConfig.supportedParams.temperature && (
+                        <Box>
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1, justifyContent: "space-between" }}>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                              <Typography variant="body2">Temperature</Typography>
+                              <Tooltip
+                                title="Controls randomness in responses. Lower values = more accurate SQL, Higher values = more creative. Recommended: 0.0-0.3 for database queries"
+                                arrow
+                                placement="top"
+                              >
+                                <HelpIcon sx={{ fontSize: 18, cursor: "pointer" }} />
+                              </Tooltip>
+                            </Box>
+                            <Typography variant="body2" sx={{ fontWeight: "bold" }}>
+                              {formData.temperature}
+                            </Typography>
+                          </Box>
 
-                  <Box>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
-                      <Typography variant="body2">Max Tokens</Typography>
-                      <Tooltip title="Maximum number of tokens in the response" arrow placement="top">
-                        <HelpIcon sx={{ fontSize: 18, cursor: "pointer" }} />
-                      </Tooltip>
-                    </Box>
-                    <TextField
-                      type="number"
-                      value={formData.max_tokens}
-                      onChange={(e) => handleFieldChange("max_tokens", parseInt(e.target.value) || 2000)}
-                      fullWidth
-                      size="small"
-                      inputProps={{ min: 100, max: 128000 }}
-                    />
-                  </Box>
+                          <Slider
+                            value={formData.temperature}
+                            onChange={(_, value) => handleFieldChange("temperature", value)}
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            marks={[
+                              { value: 0, label: "0" },
+                              { value: 0.3, label: "0.3" },
+                              { value: 0.6, label: "0.6" },
+                              { value: 1, label: "1" },
+                            ]}
+                          />
+                        </Box>
+                      )}
 
-                  <Box>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1, justifyContent: "space-between" }}>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <Typography variant="body2">Top P</Typography>
-                        <Tooltip title="Nucleus sampling - cumulative probability threshold for token selection" arrow placement="top">
-                          <HelpIcon sx={{ fontSize: 18, cursor: "pointer" }} />
-                        </Tooltip>
-                      </Box>
-                      <Typography variant="body2" sx={{ fontWeight: "bold" }}>
-                        {formData.top_p}
-                      </Typography>
-                    </Box>
-                    <Slider
-                      value={formData.top_p}
-                      onChange={(_, value) => handleFieldChange("top_p", value)}
-                      min={0}
-                      max={1}
-                      step={0.1}
-                      marks={[
-                        { value: 0, label: "0" },
-                        { value: 0.5, label: "0.5" },
-                        { value: 1, label: "1" },
-                      ]}
-                    />
-                  </Box>
+                      {/* Max Tokens - Conditional display based on provider support */}
+                      {providerConfig.supportedParams.max_tokens && (
+                        <Box>
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
+                            <Typography variant="body2">Max Tokens</Typography>
+                            <Tooltip title="Maximum number of tokens for SQL query and explanation. Recommended: 2000-4000 for accurate SQL generation" arrow placement="top">
+                              <HelpIcon sx={{ fontSize: 18, cursor: "pointer" }} />
+                            </Tooltip>
+                          </Box>
+                          <TextField
+                            type="number"
+                            value={formData.max_tokens}
+                            onChange={(e) => handleFieldChange("max_tokens", parseInt(e.target.value) || 4000)}
+                            fullWidth
+                            size="small"
+                            inputProps={{ min: 100, max: 16000 }}
+                          />
+                        </Box>
+                      )}
 
-                  <Box>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1, justifyContent: "space-between" }}>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <Typography variant="body2">Frequency Penalty</Typography>
-                        <Tooltip title="Reduces repetition by penalizing tokens based on frequency" arrow placement="top">
-                          <HelpIcon sx={{ fontSize: 18, cursor: "pointer" }} />
-                        </Tooltip>
-                      </Box>
-                      <Typography variant="body2" sx={{ fontWeight: "bold" }}>
-                        {formData.frequency_penalty}
-                      </Typography>
-                    </Box>
-                    <Slider
-                      value={formData.frequency_penalty}
-                      onChange={(_, value) => handleFieldChange("frequency_penalty", value)}
-                      min={0}
-                      max={2}
-                      step={0.1}
-                    />
-                  </Box>
+                      {/* Top P - Conditional display based on provider support */}
+                      {providerConfig.supportedParams.top_p && (
+                        <Box>
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1, justifyContent: "space-between" }}>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                              <Typography variant="body2">Top P</Typography>
+                              <Tooltip title="Nucleus sampling - cumulative probability threshold. Lower values = more deterministic SQL, Higher = more varied. Recommended: 0.9-0.95 for database queries" arrow placement="top">
+                                <HelpIcon sx={{ fontSize: 18, cursor: "pointer" }} />
+                              </Tooltip>
+                            </Box>
+                            <Typography variant="body2" sx={{ fontWeight: "bold" }}>
+                              {formData.top_p}
+                            </Typography>
+                          </Box>
+                          <Slider
+                            value={formData.top_p}
+                            onChange={(_, value) => handleFieldChange("top_p", value)}
+                            min={0.5}
+                            max={1}
+                            step={0.05}
+                            marks={[
+                              { value: 0.5, label: "0.5" },
+                              { value: 0.75, label: "0.75" },
+                              { value: 0.9, label: "0.9" },
+                              { value: 1, label: "1" },
+                            ]}
+                          />
+                        </Box>
+                      )}
 
-                  <Box>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1, justifyContent: "space-between" }}>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <Typography variant="body2">Presence Penalty</Typography>
-                        <Tooltip title="Encourages new topics by penalizing tokens that have appeared" arrow placement="top">
-                          <HelpIcon sx={{ fontSize: 18, cursor: "pointer" }} />
-                        </Tooltip>
-                      </Box>
-                      <Typography variant="body2" sx={{ fontWeight: "bold" }}>
-                        {formData.presence_penalty}
-                      </Typography>
+                      {/* Frequency Penalty - Conditional display based on provider support */}
+                      {providerConfig.supportedParams.frequency_penalty && (
+                        <Box>
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1, justifyContent: "space-between" }}>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                              <Typography variant="body2">Frequency Penalty</Typography>
+                              <Tooltip title="Reduces repetition by penalizing tokens based on frequency. Recommended: 0 for SQL queries" arrow placement="top">
+                                <HelpIcon sx={{ fontSize: 18, cursor: "pointer" }} />
+                              </Tooltip>
+                            </Box>
+                            <Typography variant="body2" sx={{ fontWeight: "bold" }}>
+                              {formData.frequency_penalty}
+                            </Typography>
+                          </Box>
+                          <Slider
+                            value={formData.frequency_penalty}
+                            onChange={(_, value) => handleFieldChange("frequency_penalty", value)}
+                            min={0}
+                            max={2}
+                            step={0.1}
+                          />
+                        </Box>
+                      )}
+
+                      {/* Presence Penalty - Conditional display based on provider support */}
+                      {providerConfig.supportedParams.presence_penalty && (
+                        <Box>
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1, justifyContent: "space-between" }}>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                              <Typography variant="body2">Presence Penalty</Typography>
+                              <Tooltip title="Encourages new topics by penalizing tokens that have appeared. Recommended: 0 for SQL queries" arrow placement="top">
+                                <HelpIcon sx={{ fontSize: 18, cursor: "pointer" }} />
+                              </Tooltip>
+                            </Box>
+                            <Typography variant="body2" sx={{ fontWeight: "bold" }}>
+                              {formData.presence_penalty}
+                            </Typography>
+                          </Box>
+                          <Slider
+                            value={formData.presence_penalty}
+                            onChange={(_, value) => handleFieldChange("presence_penalty", value)}
+                            min={0}
+                            max={2}
+                            step={0.1}
+                          />
+                        </Box>
+                      )}
+
+                      {/* Show unsupported parameters message if no advanced params are supported */}
+                      {!providerConfig.supportedParams.temperature &&
+                       !providerConfig.supportedParams.max_tokens &&
+                       !providerConfig.supportedParams.top_p &&
+                       !providerConfig.supportedParams.frequency_penalty &&
+                       !providerConfig.supportedParams.presence_penalty && (
+                        <Box sx={{ gridColumn: "1 / -1", p: 2, textAlign: "center", color: "text.secondary" }}>
+                          <Typography variant="body2">
+                            This provider does not support advanced parameters
+                          </Typography>
+                        </Box>
+                      )}
                     </Box>
-                    <Slider
-                      value={formData.presence_penalty}
-                      onChange={(_, value) => handleFieldChange("presence_penalty", value)}
-                      min={0}
-                      max={2}
-                      step={0.1}
-                    />
-                  </Box>
-                </Box>
+                  </>
+                )}
               </Box>
             </Box>
           </>

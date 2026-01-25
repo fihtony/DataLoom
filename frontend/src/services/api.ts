@@ -429,6 +429,68 @@ class ApiClient {
     return response.data || [];
   }
 
+  // Provider parameter support configuration
+  private getProviderSupport(provider: string) {
+    const supportMap: Record<string, {
+      temperature: boolean;
+      max_tokens: boolean;
+      top_p: boolean;
+      frequency_penalty: boolean;
+      presence_penalty: boolean;
+    }> = {
+      copilot: {
+        temperature: false,
+        max_tokens: true,
+        top_p: false,
+        frequency_penalty: false,
+        presence_penalty: false,
+      },
+      openai: {
+        temperature: true,
+        max_tokens: true,
+        top_p: true,
+        frequency_penalty: true,
+        presence_penalty: true,
+      },
+      anthropic: {
+        temperature: true,
+        max_tokens: true,
+        top_p: true,
+        frequency_penalty: false,
+        presence_penalty: false,
+      },
+      zhipu: {
+        temperature: true,
+        max_tokens: true,
+        top_p: true,
+        frequency_penalty: false,
+        presence_penalty: false,
+      },
+      azure: {
+        temperature: true,
+        max_tokens: true,
+        top_p: true,
+        frequency_penalty: true,
+        presence_penalty: true,
+      },
+      ollama: {
+        temperature: true,
+        max_tokens: true,
+        top_p: true,
+        frequency_penalty: false,
+        presence_penalty: false,
+      },
+      custom: {
+        temperature: true,
+        max_tokens: true,
+        top_p: true,
+        frequency_penalty: true,
+        presence_penalty: true,
+      },
+    };
+    return supportMap[provider] || supportMap.custom;
+  }
+
   // Chat with specific agent
   async chatWithAgent(agent: AIAgent, prompt: string, context?: string): Promise<{ success: boolean; response?: string; error?: string }> {
     try {
@@ -452,15 +514,20 @@ class ApiClient {
         headers["Authorization"] = `Bearer ${agent.api_key}`;
       }
 
-      const body = {
+      // Get provider support and only include supported parameters
+      const support = this.getProviderSupport(agent.provider);
+
+      const body: any = {
         model: agent.model,
         messages: [...(context ? [{ role: "system", content: context }] : []), { role: "user", content: prompt }],
-        temperature: agent.temperature,
-        max_tokens: agent.max_tokens,
-        top_p: agent.top_p,
-        frequency_penalty: agent.frequency_penalty,
-        presence_penalty: agent.presence_penalty,
       };
+
+      // Only include parameters that are supported by the provider
+      if (support.temperature) body.temperature = agent.temperature;
+      if (support.max_tokens) body.max_tokens = agent.max_tokens;
+      if (support.top_p) body.top_p = agent.top_p;
+      if (support.frequency_penalty) body.frequency_penalty = agent.frequency_penalty;
+      if (support.presence_penalty) body.presence_penalty = agent.presence_penalty;
 
       const response = await fetch(chatUrl, {
         method: "POST",
