@@ -19,6 +19,7 @@ interface AppState {
   activeConnectionId: number | null;
   connectionSessionId: string | null; // NEW: Session ID for current connection
   chatSessionId: string | null; // NEW: Session ID for current chat
+  readOnlyStatus: "readonly" | "readwrite" | "unknown" | null; // Connection read-only status
   schema: DatabaseSchema | null;
   schemaError: string | null;
   schemaLoading: boolean;
@@ -70,6 +71,7 @@ interface AppState {
   sendMessage: (content: string) => Promise<void>;
   executeSQLDirectly: (sql: string) => Promise<QueryResult | null>;
   clearMessages: () => void;
+  clearChatHistory: () => Promise<{ success: boolean; isNewSession: boolean }>; // Clear chat and reset backend session
 
   // UI Actions
   toggleSidebar: () => void;
@@ -82,6 +84,7 @@ export const useStore = create<AppState>((set, get) => ({
   activeConnectionId: null,
   connectionSessionId: null,
   chatSessionId: null,
+  readOnlyStatus: null,
   schema: null,
   schemaError: null,
   schemaLoading: false,
@@ -184,7 +187,10 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const result = await api.connectDatabase(id);
       if (result.success && result.sessionId) {
-        set({ connectionSessionId: result.sessionId });
+        set({ 
+          connectionSessionId: result.sessionId,
+          readOnlyStatus: result.readOnlyStatus || "unknown",
+        });
       }
       return result;
     } catch (error) {
@@ -197,7 +203,7 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const result = await api.disconnectDatabaseSession(sessionId);
       if (result.success) {
-        set({ connectionSessionId: null, chatSessionId: null, messages: [] });
+        set({ connectionSessionId: null, chatSessionId: null, readOnlyStatus: null, messages: [] });
       }
       return result;
     } catch (error) {
@@ -208,7 +214,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   resetChatSession: () => {
     // Reset chat-related state when entering chat page
-    set({ connectionSessionId: null, chatSessionId: null, messages: [] });
+    set({ connectionSessionId: null, chatSessionId: null, readOnlyStatus: null, messages: [] });
   },
 
   testConnection: async (id) => {
@@ -490,6 +496,36 @@ export const useStore = create<AppState>((set, get) => ({
 
   clearMessages: () => {
     set({ messages: [] });
+  },
+
+  clearChatHistory: async () => {
+    const { connectionSessionId, chatSessionId } = get();
+    
+    if (!connectionSessionId) {
+      // No active connection, just clear messages
+      set({ messages: [], chatSessionId: null });
+      return { success: true, isNewSession: false };
+    }
+
+    try {
+      // Call backend to reset chat session
+      const result = await api.resetChatSession(connectionSessionId, chatSessionId || undefined);
+      
+      if (result.success && result.chatSessionId) {
+        // Update with new chat session ID
+        set({ messages: [], chatSessionId: result.chatSessionId });
+        return { success: true, isNewSession: true };
+      }
+      
+      // Fallback: just clear messages locally
+      set({ messages: [], chatSessionId: null });
+      return { success: true, isNewSession: false };
+    } catch (error) {
+      console.error("Failed to reset chat session:", error);
+      // Clear messages locally even if backend fails
+      set({ messages: [], chatSessionId: null });
+      return { success: false, isNewSession: false };
+    }
   },
 
   // UI Actions

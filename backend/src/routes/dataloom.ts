@@ -15,7 +15,9 @@ import {
   validateChatSession,
   markChatSessionAsFollowUp,
   disconnectSession,
+  resetChatSession,
 } from "../services/database/connectionManager.js";
+import * as connectionManager from "../services/database/connectionManager.js";
 import {
   createDatabaseConnection,
   getDatabaseConnection,
@@ -312,6 +314,32 @@ router.post("/connections/:id/disconnect", async (req: Request, res: Response) =
     res.json({ success: true, message: "Disconnected from database" });
   } catch (error: any) {
     logger.error(`Error disconnecting from database: ${error.message}`);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Reset chat session - clears chat history and creates new session
+router.post("/connections/session/:sessionId/reset-chat", async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    const { chatSessionId } = req.body;
+
+    if (!sessionId) {
+      return res.status(400).json({ success: false, error: "Session ID is required" });
+    }
+
+    // Reset chat session and get new chat session ID
+    const newChatSessionId = connectionManager.resetChatSession(sessionId, chatSessionId);
+
+    logger.info(`[Chat Session] Reset chat session for connection session ${sessionId}, new chat session: ${newChatSessionId}`);
+
+    res.json({
+      success: true,
+      message: "Chat session reset successfully",
+      chatSessionId: newChatSessionId,
+    });
+  } catch (error: any) {
+    logger.error(`Error resetting chat session: ${error.message}`);
     res.status(500).json({ success: false, error: error.message });
   }
 });

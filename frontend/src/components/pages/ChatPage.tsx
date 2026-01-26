@@ -40,6 +40,7 @@ export function ChatPage() {
     connections,
     activeConnectionId,
     connectionSessionId,
+    readOnlyStatus: storeReadOnlyStatus,
     setActiveConnection,
     agents,
     selectedAgent,
@@ -50,7 +51,7 @@ export function ChatPage() {
     messages,
     loadingChat,
     sendMessage,
-    clearMessages,
+    clearChatHistory,
     connectDatabase,
     disconnectDatabase,
     resetChatSession,
@@ -62,6 +63,7 @@ export function ChatPage() {
   const [readOnlyStatus, setReadOnlyStatus] = useState<"readonly" | "readwrite" | "unknown" | null>(null);
   const [validationDialogOpen, setValidationDialogOpen] = useState(false);
   const [validationMessage, setValidationMessage] = useState<string>("");
+  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null); // Track when session started
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Reset chat session when entering chat page per requirement:
@@ -90,6 +92,16 @@ export function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Sync connectionStatus with connectionSessionId for reliability
+  useEffect(() => {
+    if (connectionSessionId && connectionStatus !== "connected") {
+      setConnectionStatus("connected");
+    } else if (!connectionSessionId && connectionStatus === "connected") {
+      setConnectionStatus("idle");
+      setReadOnlyStatus(null);
+    }
+  }, [connectionSessionId, connectionStatus]);
+
   // Auto-dismiss connection message after 5 seconds
   useEffect(() => {
     if (connectionMessage) {
@@ -111,6 +123,7 @@ export function ChatPage() {
         setConnectionStatus("idle");
         setReadOnlyStatus(null);
         setConnectionMessage(null);
+        setSessionStartTime(null); // Clear session start time on disconnect
       } catch (error) {
         setConnectionStatus("error");
         setConnectionMessage({
@@ -129,6 +142,8 @@ export function ChatPage() {
         setConnectionStatus("connected");
         setReadOnlyStatus(result.readOnlyStatus || "unknown");
         setConnectionMessage({ success: true, message: "Database connected successfully" });
+        // Set session start time for the system message
+        setSessionStartTime(new Date());
       } else {
         setConnectionStatus("error");
         setReadOnlyStatus(null);
@@ -178,24 +193,34 @@ export function ChatPage() {
     }
   };
 
+  // Handle clear chat - reset backend session and set new session start time
+  const handleClearChat = async () => {
+    const result = await clearChatHistory();
+    if (result.isNewSession) {
+      // Set new session start time for the system message
+      setSessionStartTime(new Date());
+    }
+  };
+
   return (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100%", gap: 0 }}>
-      {/* READ ONLY / READWRITE Status Banner */}
-      {connectionStatus === "connected" && readOnlyStatus && (
+      {/* READ ONLY / READWRITE Status Banner - Always visible when connected */}
+      {/* Use connectionSessionId from store for reliability */}
+      {connectionSessionId && (
         <Box
           sx={{
             width: "100%",
             py: 0.5,
             px: 2,
-            backgroundColor: readOnlyStatus === "readonly" ? "#4caf50" : "#ff9800",
-            color: readOnlyStatus === "readonly" ? "white" : "#000",
+            backgroundColor: (storeReadOnlyStatus || readOnlyStatus) === "readonly" ? "#4caf50" : "#ff9800",
+            color: (storeReadOnlyStatus || readOnlyStatus) === "readonly" ? "white" : "#000",
             fontSize: "11px",
             fontWeight: 600,
             textAlign: "center",
             letterSpacing: "0.5px",
           }}
         >
-          {readOnlyStatus === "readonly"
+          {(storeReadOnlyStatus || readOnlyStatus) === "readonly"
             ? "🔒 READ ONLY CONNECTION - Safe to query"
             : "⚠️ CONNECTION HAS WRITE ACCESS - Consider using a read-only database user for safer queries"}
         </Box>
@@ -332,6 +357,29 @@ export function ChatPage() {
               fontSize: "0.8rem",
             }}
           >
+            {/* Session Start System Message - Only shown after first message is sent */}
+            {sessionStartTime && messages.length > 0 && (
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "flex-start",
+                  mb: 0.5,
+                  // Align with agent message content (avatar width 36px + gap 12px = 48px = 6 * 8px)
+                  pl: 6,
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "text.disabled",
+                    fontSize: "0.7rem",
+                    fontStyle: "italic",
+                  }}
+                >
+                  New conversation started at {sessionStartTime.toLocaleTimeString()}
+                </Typography>
+              </Box>
+            )}
             {messages.length === 0 ? (
               <Box
                 sx={{
@@ -382,7 +430,7 @@ export function ChatPage() {
                     <Paper
                       elevation={1}
                       sx={{
-                        p: 2,
+                        p: 1.5,
                         bgcolor: message.role === "user" ? "primary.light" : "grey.100",
                         color: message.role === "user" ? "primary.contrastText" : "text.primary",
                         borderRadius: 2,
@@ -410,7 +458,7 @@ export function ChatPage() {
                           {message.content}
                         </Typography>
                       )}
-                      <Typography variant="caption" sx={{ display: "block", mt: 1, opacity: 0.7, fontSize: "0.6rem" }}>
+                      <Typography variant="caption" sx={{ display: "block", mt: 0.5, opacity: 0.7, fontSize: "0.6rem" }}>
                         {new Date(message.timestamp).toLocaleTimeString()}
                       </Typography>
                     </Paper>
@@ -457,9 +505,9 @@ export function ChatPage() {
                   </IconButton>
                 </span>
               </Tooltip>
-              <Tooltip title="Clear chat history" arrow>
+              <Tooltip title="Clear chat history and start new session" arrow>
                 <span>
-                  <IconButton color="error" onClick={clearMessages} disabled={messages.length === 0}>
+                  <IconButton color="error" onClick={handleClearChat} disabled={messages.length === 0}>
                     <DeleteIcon />
                   </IconButton>
                 </span>

@@ -108,9 +108,31 @@ export class CopilotProvider implements AgentProvider {
     const timeout = request.timeout || DEFAULT_TIMEOUT;
 
     try {
+      // Build prompt with conversation history
+      let fullPrompt = "";
+      
+      // Add context first
+      if (request.context) {
+        fullPrompt += request.context + "\n\n";
+      }
+      
+      // Add conversation history (if any)
+      if (request.history && request.history.length > 0) {
+        fullPrompt += "=== CONVERSATION HISTORY ===\n";
+        for (const msg of request.history) {
+          const roleLabel = msg.role === "user" ? "User" : msg.role === "assistant" ? "Assistant" : "System";
+          fullPrompt += `${roleLabel}: ${msg.content}\n\n`;
+        }
+        fullPrompt += "=== CURRENT QUESTION ===\n";
+        logger.debug(`[CopilotProvider] Including ${request.history.length} messages from conversation history`);
+      }
+      
+      // Add current prompt
+      fullPrompt += request.prompt;
+      
       const requestBody: any = {
         sessionId,
-        prompt: request.context ? `${request.context}\n\n${request.prompt}` : request.prompt,
+        prompt: fullPrompt,
         model: request.model || agent.model || "gpt-4o",
         timeout,
       };

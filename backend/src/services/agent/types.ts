@@ -32,6 +32,14 @@ export interface AIModel {
 }
 
 /**
+ * Chat message for conversation history
+ */
+export interface ChatHistoryMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+/**
  * Chat request parameters
  */
 export interface ChatRequest {
@@ -45,6 +53,7 @@ export interface ChatRequest {
   topP?: number;
   frequencyPenalty?: number;
   presencePenalty?: number;
+  history?: ChatHistoryMessage[]; // Conversation history for multi-turn chat
 }
 
 /**

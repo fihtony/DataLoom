@@ -425,12 +425,20 @@ router.post("/", async (req: Request, res: Response) => {
       logger.debug(promptPreview);
       logger.info(`[Prompt] Total prompt lines: ${promptLines.length}`);
 
-      // Call AI using AgentService
+      // Get conversation history for multi-turn chat
+      const chatHistory = connectionManager.getChatHistory(chatSessionId);
+      const historyCount = chatHistory.length;
+      if (historyCount > 0) {
+        logger.info(`[Chat] Including ${historyCount} messages from conversation history`);
+      }
+
+      // Call AI using AgentService with conversation history
       const aiResponse = await agentService.chat(selectedAgent, {
         prompt,
         model: chatModel,
         timeout: 60000,
         maxTokens: selectedAgent.max_tokens,
+        history: chatHistory, // Include conversation history
       });
 
       if (!aiResponse.success || !aiResponse.response) {
@@ -522,6 +530,14 @@ router.post("/", async (req: Request, res: Response) => {
 
     // Mark chat session as follow-up for next question
     connectionManager.markChatSessionAsFollowUp(chatSessionId);
+
+    // Save conversation to history for multi-turn chat
+    // Store user question
+    connectionManager.addChatMessage(chatSessionId, "user", naturalLanguage);
+    // Store assistant response (brief summary to avoid token bloat)
+    const assistantSummary = `${explanation || "Query executed successfully"} (${result.rowCount} rows)`;
+    connectionManager.addChatMessage(chatSessionId, "assistant", assistantSummary);
+    logger.info(`[Chat] Saved conversation to history, total messages: ${connectionManager.getChatHistoryCount(chatSessionId)}`);
 
     // Enhance visualization with legend containing key field
     const finalVisualization = enhanceVisualizationWithLegend(visualization || result.visualization, result.columns || []);

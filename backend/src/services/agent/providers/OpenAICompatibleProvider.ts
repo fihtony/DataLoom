@@ -208,11 +208,23 @@ export class OpenAICompatibleProvider implements AgentProvider {
         headers["Authorization"] = `Bearer ${agent.api_key}`;
       }
 
-      // Build messages array
+      // Build messages array with conversation history
       const messages: Array<{ role: string; content: string }> = [];
+      
+      // Add system context first
       if (request.context) {
         messages.push({ role: "system", content: request.context });
       }
+      
+      // Add conversation history (if any)
+      if (request.history && request.history.length > 0) {
+        for (const msg of request.history) {
+          messages.push({ role: msg.role, content: msg.content });
+        }
+        logger.debug(`[${this.providerId}Provider] Including ${request.history.length} messages from conversation history`);
+      }
+      
+      // Add current user prompt
       messages.push({ role: "user", content: request.prompt });
 
       // Build request body with supported parameters

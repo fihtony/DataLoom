@@ -18,6 +18,12 @@ import {
   Divider,
   Paper,
   IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Button,
 } from "@mui/material";
 import {
   Storage as LogoIcon,
@@ -84,13 +90,44 @@ const menuItems: { id: MenuType; label: string; icon: React.ReactNode }[] = [
 ];
 
 function App() {
-  const { activeMenu, setActiveMenu, loadConnections, loadAgents } = useStore();
+  const { activeMenu, setActiveMenu, loadConnections, loadAgents, connectionSessionId, disconnectDatabase } = useStore();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [navigationDialogOpen, setNavigationDialogOpen] = useState(false);
+  const [pendingMenuId, setPendingMenuId] = useState<string | null>(null);
 
   useEffect(() => {
     loadConnections();
     loadAgents();
   }, []);
+
+  // Handle menu click with confirmation if there's an active connection
+  const handleMenuClick = (menuId: string) => {
+    // If navigating away from chat page with an active connection, show confirmation
+    if (activeMenu === "chat" && menuId !== "chat" && connectionSessionId) {
+      setPendingMenuId(menuId);
+      setNavigationDialogOpen(true);
+    } else {
+      setActiveMenu(menuId as any);
+    }
+  };
+
+  // Handle confirmation to disconnect and navigate
+  const handleConfirmNavigation = async () => {
+    if (connectionSessionId) {
+      await disconnectDatabase(connectionSessionId);
+    }
+    if (pendingMenuId) {
+      setActiveMenu(pendingMenuId as any);
+    }
+    setNavigationDialogOpen(false);
+    setPendingMenuId(null);
+  };
+
+  // Handle cancel navigation
+  const handleCancelNavigation = () => {
+    setNavigationDialogOpen(false);
+    setPendingMenuId(null);
+  };
 
   const renderContent = () => {
     switch (activeMenu) {
@@ -155,7 +192,7 @@ function App() {
           >
             <List sx={{ flexGrow: 1, pt: 0 }}>
               {menuItems.map((item) => (
-                <ListItemButton key={item.id} selected={activeMenu === item.id} onClick={() => setActiveMenu(item.id)}>
+                <ListItemButton key={item.id} selected={activeMenu === item.id} onClick={() => handleMenuClick(item.id)}>
                   <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
                   <ListItemText primary={item.label} />
                 </ListItemButton>
@@ -180,6 +217,30 @@ function App() {
             {renderContent()}
           </Box>
         </Box>
+
+        {/* Navigation Confirmation Dialog */}
+        <Dialog
+          open={navigationDialogOpen}
+          onClose={handleCancelNavigation}
+          PaperProps={{
+            sx: { p: 1 }
+          }}
+        >
+          <DialogTitle>Disconnect Database?</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              You have an active database connection. Leaving this page will disconnect the database and clear the chat history.<br/>Do you want to continue?
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCancelNavigation} color="primary">
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmNavigation} color="error" variant="contained">
+              Disconnect & Leave
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     </ThemeProvider>
   );

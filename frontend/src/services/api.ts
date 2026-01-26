@@ -142,6 +142,19 @@ class ApiClient {
     }
   }
 
+  async resetChatSession(connectionSessionId: string, chatSessionId?: string): Promise<{ success: boolean; chatSessionId?: string }> {
+    try {
+      const response = await this.directRequest<{ success: boolean; chatSessionId?: string }>(
+        "POST",
+        `/dataloom/connections/session/${connectionSessionId}/reset-chat`,
+        { chatSessionId }
+      );
+      return { success: response.success, chatSessionId: response.chatSessionId };
+    } catch (error) {
+      return { success: false };
+    }
+  }
+
   async disconnectDatabase(id: number): Promise<{ success: boolean }> {
     try {
       const response = await this.request<{ success: boolean }>("POST", `/dataloom/connections/${id}/disconnect`);

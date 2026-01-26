@@ -27,8 +27,20 @@ const connectionSessions: Map<
   }
 > = new Map();
 
-// Chat session storage: chatSessionId -> {connectionSessionId, isFollowUp, createdAt}
-const chatSessions: Map<string, { connectionSessionId: string; isFollowUp: boolean; createdAt: number }> = new Map();
+// Chat message type for conversation history
+interface ChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+  timestamp: number;
+}
+
+// Chat session storage: chatSessionId -> {connectionSessionId, isFollowUp, createdAt, history}
+const chatSessions: Map<string, { 
+  connectionSessionId: string; 
+  isFollowUp: boolean; 
+  createdAt: number;
+  history: ChatMessage[];
+}> = new Map();
 
 /**
  * Format column name from snake_case to Title Case
@@ -955,6 +967,7 @@ export function createChatSession(connectionSessionId: string): string {
     connectionSessionId,
     isFollowUp: false,
     createdAt: Date.now(),
+    history: [],
   });
   logger.info(`[Chat Session Manager] Created chat session ${chatSessionId} for connection session ${connectionSessionId}`);
   return chatSessionId;
@@ -1060,6 +1073,72 @@ export function markChatSessionAsFollowUp(chatSessionId: string): void {
     session.isFollowUp = true;
     logger.debug(`[Chat Session Manager] Chat session ${chatSessionId} marked as follow-up`);
   }
+}
+
+/**
+ * Add a message to chat history
+ */
+export function addChatMessage(chatSessionId: string, role: "user" | "assistant" | "system", content: string): void {
+  const session = chatSessions.get(chatSessionId);
+  if (session) {
+    session.history.push({
+      role,
+      content,
+      timestamp: Date.now(),
+    });
+    logger.debug(`[Chat Session Manager] Added ${role} message to chat session ${chatSessionId}, total messages: ${session.history.length}`);
+  }
+}
+
+/**
+ * Get chat history for a session
+ * Returns array of messages in OpenAI format
+ */
+export function getChatHistory(chatSessionId: string): Array<{ role: "user" | "assistant" | "system"; content: string }> {
+  const session = chatSessions.get(chatSessionId);
+  if (session) {
+    // Return messages without timestamp for API compatibility
+    return session.history.map(msg => ({
+      role: msg.role,
+      content: msg.content,
+    }));
+  }
+  return [];
+}
+
+/**
+ * Get chat history count
+ */
+export function getChatHistoryCount(chatSessionId: string): number {
+  const session = chatSessions.get(chatSessionId);
+  return session?.history.length || 0;
+}
+
+/**
+ * Clear chat history for a session (but keep the session)
+ */
+export function clearChatHistory(chatSessionId: string): void {
+  const session = chatSessions.get(chatSessionId);
+  if (session) {
+    session.history = [];
+    session.isFollowUp = false;
+    logger.info(`[Chat Session Manager] Cleared chat history for session ${chatSessionId}`);
+  }
+}
+
+/**
+ * Reset chat session - creates a new session ID and clears history
+ * Returns the new chatSessionId
+ */
+export function resetChatSession(connectionSessionId: string, oldChatSessionId?: string): string {
+  // Delete old session if provided
+  if (oldChatSessionId) {
+    chatSessions.delete(oldChatSessionId);
+    logger.info(`[Chat Session Manager] Deleted old chat session ${oldChatSessionId}`);
+  }
+  
+  // Create new session
+  return createChatSession(connectionSessionId);
 }
 
 /**
