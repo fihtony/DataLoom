@@ -275,26 +275,33 @@ export function saveAnalysisResult(
   for (const tableData of analysis.tableExplanations) {
     const existingTable = existingTableMap.get(tableData.table_name);
     let tableId: number;
+    
+    // Check if we should skip updating the table (only update columns)
+    const skipTableUpdate = (tableData as any)._skipTableUpdate === true;
 
     if (existingTable && existingTable.id) {
-      // Update existing table
-      updateTableExplanation(existingTable.id, {
-        schema_name: tableData.schema_name,
-        explanation: tableData.explanation,
-        business_purpose: tableData.business_purpose,
-        keywords: JSON.stringify(tableData.keywords || []),
-      });
       tableId = existingTable.id;
-      stats.updated.tables++;
+      
+      // Only update table if not skipped
+      if (!skipTableUpdate) {
+        updateTableExplanation(existingTable.id, {
+          schema_name: tableData.schema_name,
+          explanation: tableData.explanation,
+          business_purpose: tableData.business_purpose,
+          keywords: JSON.stringify(tableData.keywords || []),
+        });
+        stats.updated.tables++;
+      }
     } else {
-      // Create new table
+      // Create new table (always create if it doesn't exist, even if skipTableUpdate is true)
+      // This is necessary because columns need a parent table
       tableId = createTableExplanation({
         database_connection_id: connectionId,
         schema_name: tableData.schema_name,
         table_name: tableData.table_name,
-        explanation: tableData.explanation,
-        business_purpose: tableData.business_purpose,
-        keywords: JSON.stringify(tableData.keywords || []),
+        explanation: skipTableUpdate ? "" : tableData.explanation,
+        business_purpose: skipTableUpdate ? "" : tableData.business_purpose,
+        keywords: skipTableUpdate ? "[]" : JSON.stringify(tableData.keywords || []),
       });
       stats.saved.tables++;
     }

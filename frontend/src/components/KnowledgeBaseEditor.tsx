@@ -249,8 +249,11 @@ export function KnowledgeBaseEditor(props: KnowledgeBaseEditorProps) {
       return;
     }
 
+    // Calculate total selected columns
+    const totalSelectedColumnsCount = Array.from(selectedColumns.values()).reduce((sum, set) => sum + set.size, 0);
+
     // Check if anything is selected
-    if (selectedTables.size === 0 && selectedExamples.size === 0) {
+    if (selectedTables.size === 0 && selectedExamples.size === 0 && totalSelectedColumnsCount === 0) {
       setTestResult({
         success: false,
         message: "Please select at least one item to save",
@@ -261,18 +264,32 @@ export function KnowledgeBaseEditor(props: KnowledgeBaseEditorProps) {
     setAnalyzing(true);
     try {
       // Build filtered analysis result based on selection
+      // Include a table if: 1) table is selected, OR 2) any columns in that table are selected
       const filteredTableExplanations = analysisResult.tableExplanations
-        .filter((_, idx) => selectedTables.has(idx))
+        .filter((table, idx) => {
+          const isTableSelected = selectedTables.has(idx);
+          const hasSelectedColumns = (selectedColumns.get(table.table_name)?.size || 0) > 0;
+          return isTableSelected || hasSelectedColumns;
+        })
         .map((table) => {
-          // Filter columns for this table
+          // Find the original index of this table in the analysis result
+          const originalIdx = analysisResult.tableExplanations.findIndex(t => t.table_name === table.table_name);
+          const isTableSelected = selectedTables.has(originalIdx);
           const selectedColumnIndices = selectedColumns.get(table.table_name);
-          if (selectedColumnIndices && table.columns) {
-            return {
-              ...table,
-              columns: table.columns.filter((_, colIdx) => selectedColumnIndices.has(colIdx)),
-            };
+          const hasSelectedColumns = (selectedColumnIndices?.size || 0) > 0;
+          
+          // Filter columns for this table
+          let filteredColumns = table.columns;
+          if (selectedColumnIndices && selectedColumnIndices.size > 0 && table.columns) {
+            filteredColumns = table.columns.filter((_, colIdx) => selectedColumnIndices.has(colIdx));
           }
-          return table;
+          
+          return {
+            ...table,
+            columns: filteredColumns,
+            // Add flag: only update table if explicitly selected, not just because columns are selected
+            _skipTableUpdate: !isTableSelected && hasSelectedColumns,
+          };
         });
 
       const filteredSqlExamples = analysisResult.sqlExamples.filter((_, idx) => selectedExamples.has(idx));
@@ -317,13 +334,36 @@ export function KnowledgeBaseEditor(props: KnowledgeBaseEditorProps) {
     setDeleteDialogOpen(true);
   };
 
+  // Helper function to convert keywords/arrays to comma-separated string for display
+  const arrayToCommaSeparated = (value: any): string => {
+    if (!value) return "";
+    if (Array.isArray(value)) {
+      return value.join(", ");
+    }
+    if (typeof value === "string") {
+      // Try to parse as JSON if it looks like a JSON array
+      if (value.startsWith("[")) {
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) {
+            return parsed.join(", ");
+          }
+        } catch {
+          // Not valid JSON, return as-is
+        }
+      }
+      return value;
+    }
+    return String(value);
+  };
+
   const handleEditTable = (table: TableExplanation) => {
     setEditTarget({ type: "table", data: table });
     setEditFormData({
       table_name: table.table_name,
       explanation: table.explanation,
       business_purpose: table.business_purpose,
-      keywords: Array.isArray(table.keywords) ? table.keywords.join(", ") : table.keywords || "",
+      keywords: arrayToCommaSeparated(table.keywords),
     });
     setEditDialogOpen(true);
   };
@@ -334,9 +374,15 @@ export function KnowledgeBaseEditor(props: KnowledgeBaseEditorProps) {
       natural_language: example.natural_language,
       sql_query: example.sql_query,
       explanation: example.explanation,
-      tables_involved: Array.isArray(example.tables_involved) ? example.tables_involved.join(", ") : example.tables_involved || "",
+      tables_involved: arrayToCommaSeparated(example.tables_involved),
     });
     setEditDialogOpen(true);
+  };
+
+  // Helper function to convert comma-separated string to array (for saving)
+  const commaSeparatedToArray = (value: string): string[] => {
+    if (!value || value.trim() === "") return [];
+    return value.split(",").map((k: string) => k.trim()).filter((k: string) => k.length > 0);
   };
 
   const handleSaveEdit = async () => {
@@ -345,7 +391,7 @@ export function KnowledgeBaseEditor(props: KnowledgeBaseEditorProps) {
     setAnalyzing(true);
     try {
       if (editTarget.type === "table") {
-        const keywords = editFormData.keywords.split(",").map((k: string) => k.trim());
+        const keywords = commaSeparatedToArray(editFormData.keywords);
         await api.updateTableExplanation(editTarget.data.id, {
           explanation: editFormData.explanation,
           business_purpose: editFormData.business_purpose,
@@ -362,7 +408,7 @@ export function KnowledgeBaseEditor(props: KnowledgeBaseEditorProps) {
         setTableExplanations(tableExplanations.map((t) => (t.id === editTarget.data.id ? updatedTable : t)));
         setTestResult({ success: true, message: "Table explanation updated" });
       } else if (editTarget.type === "example") {
-        const tablesInvolved = editFormData.tables_involved.split(",").map((t: string) => t.trim());
+        const tablesInvolved = commaSeparatedToArray(editFormData.tables_involved);
 
         if (editTarget.data.id) {
           // Update existing example
