@@ -160,8 +160,7 @@ export function ChatPage() {
         setConnectionStatus("connected");
         setReadOnlyStatus(result.readOnlyStatus || "unknown");
         setConnectionMessage({ success: true, message: "Database connected successfully" });
-        // Set session start time for the system message
-        setSessionStartTime(new Date());
+        // Don't set session start time here - it will be set when user sends first message
         // Set stable connection state
         setHasActiveConnection(true);
         setStableReadOnlyStatus(result.readOnlyStatus || "unknown");
@@ -204,6 +203,12 @@ export function ChatPage() {
 
     const message = input;
     setInput("");
+    
+    // Set session start time when user sends first message (if not already set)
+    if (!sessionStartTime) {
+      setSessionStartTime(new Date());
+    }
+    
     await sendMessage(message);
   };
 
@@ -214,12 +219,13 @@ export function ChatPage() {
     }
   };
 
-  // Handle clear chat - reset backend session and set new session start time
+  // Handle clear chat - reset backend session and clear session start time
+  // Session start time will be set when user sends first message after clearing
   const handleClearChat = async () => {
     const result = await clearChatHistory();
     if (result.isNewSession) {
-      // Set new session start time for the system message
-      setSessionStartTime(new Date());
+      // Clear session start time - it will be set when user sends first message
+      setSessionStartTime(null);
     }
   };
 

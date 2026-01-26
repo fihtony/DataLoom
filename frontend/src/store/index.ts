@@ -329,7 +329,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   // Chat Actions
   sendMessage: async (content) => {
-    const { activeConnectionId, connectionSessionId, chatSessionId, selectedAgent } = get();
+    const { activeConnectionId, connectionSessionId, chatSessionId, selectedAgent, selectedModel } = get();
 
     if (!connectionSessionId) {
       const errorMessage: ChatMessage = {
@@ -382,12 +382,15 @@ export const useStore = create<AppState>((set, get) => ({
       // 3. Use the specified agent and provider for AI requests
       // 4. Use different AI prompt based on whether it's first question or follow-up
       // 5. Return updated chatSessionId
+      // Use selectedModel if available, otherwise fall back to agent's default model
+      const modelToUse = selectedModel?.id || selectedAgent.model;
+      
       const result = await api.executeNaturalLanguageQuery(activeConnectionId || 0, content, {
         connectionSessionId,
         chatSessionId: chatSessionId || undefined,
         agentId: selectedAgent.id,
         agentProvider: selectedAgent.provider,
-        model: selectedAgent.model,
+        model: modelToUse,
       });
 
       // Update chat session ID if we got a new one (first question)
