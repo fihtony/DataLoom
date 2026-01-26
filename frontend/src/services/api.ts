@@ -335,6 +335,7 @@ class ApiClient {
     explanation?: string;
     error?: string;
     errorCode?: string;
+    sql?: string; // SQL query (included even on error)
   }> {
     const response = await this.request<any>("POST", "/query", {
       connectionId: connectionId || undefined,

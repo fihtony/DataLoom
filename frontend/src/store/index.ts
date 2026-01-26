@@ -438,7 +438,10 @@ export const useStore = create<AppState>((set, get) => ({
         assistantContent = `⚠️ ${result.error || "Query failed"}`;
 
         // Include queryResult with SQL even on error so it can be displayed
+        // SQL can be at result.sql (error case) or result.data?.sql (success case)
         const errorSql = (result as any)?.sql || (result.data as any)?.sql;
+        
+        // Always include queryResult if SQL is available, even on error
         const assistantMessage: ChatMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
@@ -446,9 +449,10 @@ export const useStore = create<AppState>((set, get) => ({
           timestamp: new Date().toISOString(),
           queryResult: errorSql
             ? {
-                sql: errorSql,
+                sql: String(errorSql), // Ensure it's a string
                 data: undefined,
                 columns: undefined,
+                rowCount: 0,
               }
             : undefined,
         };

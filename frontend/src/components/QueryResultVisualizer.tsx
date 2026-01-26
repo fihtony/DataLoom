@@ -49,7 +49,8 @@ interface QueryResultVisualizerProps {
 export function QueryResultVisualizer({ result }: QueryResultVisualizerProps) {
   const viz = result.visualization;
   const [viewType, setViewType] = useState<"table" | "bar" | "pie" | "line" | "area">((viz?.type as any) || "table");
-  const [sqlExpanded, setSqlExpanded] = useState(false);
+  // Expand SQL by default if there's no data (error case) so user can see the query
+  const [sqlExpanded, setSqlExpanded] = useState(!result.data || result.data.length === 0);
 
   // Show error/empty state with SQL if available
   if (!result.data || result.data.length === 0) {

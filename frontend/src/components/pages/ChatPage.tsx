@@ -2,7 +2,7 @@
 // Chat Page - Chat with AI Provider
 // =============================================================================
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   Box,
   Paper,
@@ -64,6 +64,9 @@ export function ChatPage() {
   const [validationDialogOpen, setValidationDialogOpen] = useState(false);
   const [validationMessage, setValidationMessage] = useState<string>("");
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null); // Track when session started
+  // Stable connection flag - only set to true on connect, only set to false on explicit disconnect
+  const [hasActiveConnection, setHasActiveConnection] = useState(false);
+  const [stableReadOnlyStatus, setStableReadOnlyStatus] = useState<"readonly" | "readwrite" | "unknown" | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Reset chat session when entering chat page per requirement:
@@ -102,6 +105,18 @@ export function ChatPage() {
     }
   }, [connectionSessionId, connectionStatus]);
 
+  // Memoize the effective connection state and read-only status for banner stability
+  // Use hasActiveConnection as the most stable source
+  const isConnected = useMemo(() => {
+    // hasActiveConnection is only set/cleared on explicit connect/disconnect
+    return hasActiveConnection || connectionStatus === "connected" || !!connectionSessionId;
+  }, [hasActiveConnection, connectionStatus, connectionSessionId]);
+
+  const effectiveReadOnlyStatus = useMemo(() => {
+    // stableReadOnlyStatus is the most reliable, then store, then local state
+    return stableReadOnlyStatus || storeReadOnlyStatus || readOnlyStatus;
+  }, [stableReadOnlyStatus, storeReadOnlyStatus, readOnlyStatus]);
+
   // Auto-dismiss connection message after 5 seconds
   useEffect(() => {
     if (connectionMessage) {
@@ -124,6 +139,9 @@ export function ChatPage() {
         setReadOnlyStatus(null);
         setConnectionMessage(null);
         setSessionStartTime(null); // Clear session start time on disconnect
+        // Clear stable connection state on explicit disconnect
+        setHasActiveConnection(false);
+        setStableReadOnlyStatus(null);
       } catch (error) {
         setConnectionStatus("error");
         setConnectionMessage({
@@ -144,6 +162,9 @@ export function ChatPage() {
         setConnectionMessage({ success: true, message: "Database connected successfully" });
         // Set session start time for the system message
         setSessionStartTime(new Date());
+        // Set stable connection state
+        setHasActiveConnection(true);
+        setStableReadOnlyStatus(result.readOnlyStatus || "unknown");
       } else {
         setConnectionStatus("error");
         setReadOnlyStatus(null);
@@ -203,31 +224,36 @@ export function ChatPage() {
   };
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "100%", gap: 0 }}>
+    <Box sx={{ display: "flex", flexDirection: "column", height: "100%", gap: 0, position: "relative", overflow: "hidden" }}>
       {/* READ ONLY / READWRITE Status Banner - Always visible when connected */}
-      {/* Use connectionSessionId from store for reliability */}
-      {connectionSessionId && (
+      {/* Use sticky positioning to keep it visible during scroll, positioned below AppBar */}
+      {isConnected && (
         <Box
           sx={{
+            position: "sticky",
+            top: 0,
+            zIndex: 1000,
             width: "100%",
             py: 0.5,
             px: 2,
-            backgroundColor: (storeReadOnlyStatus || readOnlyStatus) === "readonly" ? "#4caf50" : "#ff9800",
-            color: (storeReadOnlyStatus || readOnlyStatus) === "readonly" ? "white" : "#000",
+            backgroundColor: effectiveReadOnlyStatus === "readonly" ? "#4caf50" : "#ff9800",
+            color: effectiveReadOnlyStatus === "readonly" ? "white" : "#000",
             fontSize: "11px",
             fontWeight: 600,
             textAlign: "center",
             letterSpacing: "0.5px",
+            flexShrink: 0,
+            boxShadow: "0 2px 4px rgba(0,0,0,0.1)", // Add shadow to distinguish from content
           }}
         >
-          {(storeReadOnlyStatus || readOnlyStatus) === "readonly"
+          {effectiveReadOnlyStatus === "readonly"
             ? "🔒 READ ONLY CONNECTION - Safe to query"
             : "⚠️ CONNECTION HAS WRITE ACCESS - Consider using a read-only database user for safer queries"}
         </Box>
       )}
 
       {/* Main Content */}
-      <Box sx={{ display: "flex", flexDirection: "column", height: "100%", p: 2, gap: 2, flex: 1 }}>
+      <Box sx={{ display: "flex", flexDirection: "column", height: "100%", p: 2, gap: 2, flex: 1, overflow: "hidden" }}>
         {/* Connection Message Alert - 25% smaller height */}
         {connectionMessage && connectionMessage.success !== true && (
           <Alert

@@ -87,6 +87,14 @@ export async function buildAIPrompt(
     }
     const schemaContext = formatSchema(schema, cfg.maxSchemaTokens);
     parts.push(`\n## Database Schema\n${schemaContext}`);
+    
+    // Add schema usage note if schemas are present
+    const hasSchemas = schema.tables.some((t: any) => t.schema);
+    if (hasSchemas) {
+      parts.push(`\n⚠️ IMPORTANT: This database uses schemas. Table names shown above include the schema prefix (e.g., "schema_name.table_name"). You MUST use the FULL table name including the schema prefix in all SQL queries. For example, if you see "Table: tony.users", write "SELECT * FROM tony.users" NOT "SELECT * FROM users".`);
+    } else {
+      parts.push(`\nNote: This database does not use schemas. Use table names as shown above without any schema prefix.`);
+    }
   } catch (error) {
     logger.warn(`Failed to get schema: ${error}`);
   }
@@ -220,9 +228,14 @@ function formatSchema(schema: DatabaseSchema, maxTokens: number): string {
   let estimatedTokens = 0;
   const tokensPerChar = 0.25; // Rough estimate
 
+  // Check if any table has a schema (for databases with schemas like PostgreSQL)
+  const hasSchemas = schema.tables.some((t: any) => t.schema);
+  
   for (const table of schema.tables) {
     const tableLines: string[] = [];
-    tableLines.push(`\nTable: ${table.name}`);
+    // Include schema name if present (e.g., "schema.table" for PostgreSQL)
+    const tableName = (table as any).schema ? `${(table as any).schema}.${table.name}` : table.name;
+    tableLines.push(`\nTable: ${tableName}`);
     if (table.rowCount !== undefined) {
       tableLines.push(`  Row count: ~${table.rowCount}`);
     }
