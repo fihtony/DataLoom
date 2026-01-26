@@ -72,6 +72,7 @@ db.exec(`
   );
 
   -- Table explanations
+  -- source: 'agent' = AI-generated, 'user' = manually created/edited by user
   CREATE TABLE IF NOT EXISTS table_explanations (
     id BIGINT PRIMARY KEY,
     database_connection_id BIGINT NOT NULL,
@@ -80,6 +81,7 @@ db.exec(`
     explanation TEXT,
     business_purpose TEXT,
     keywords TEXT,
+    source TEXT DEFAULT 'agent',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(database_connection_id) REFERENCES database_connections(id) ON DELETE CASCADE,
@@ -87,6 +89,7 @@ db.exec(`
   );
 
   -- Column explanations
+  -- source: 'agent' = AI-generated, 'user' = manually created/edited by user
   CREATE TABLE IF NOT EXISTS column_explanations (
     id BIGINT PRIMARY KEY,
     table_explanation_id BIGINT NOT NULL,
@@ -97,6 +100,7 @@ db.exec(`
     synonyms TEXT,
     sensitivity_level TEXT,
     sample_values TEXT,
+    source TEXT DEFAULT 'agent',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(table_explanation_id) REFERENCES table_explanations(id) ON DELETE CASCADE,
@@ -104,6 +108,7 @@ db.exec(`
   );
 
   -- SQL examples (includes learned prompts)
+  -- source: 'agent' = AI-generated, 'user' = manually created/edited by user
   CREATE TABLE IF NOT EXISTS sql_examples (
     id BIGINT PRIMARY KEY,
     database_connection_id BIGINT NOT NULL,
@@ -113,6 +118,7 @@ db.exec(`
     tags TEXT,
     tables_involved TEXT,
     is_learned BOOLEAN DEFAULT 0,
+    source TEXT DEFAULT 'agent',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(database_connection_id) REFERENCES database_connections(id) ON DELETE CASCADE,

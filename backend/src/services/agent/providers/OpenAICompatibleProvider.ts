@@ -6,7 +6,7 @@ import type { AgentProvider } from "../AgentProvider.js";
 import type { AIAgentConfig, AIModel, ChatRequest, ChatResponse, ProviderStatus } from "../types.js";
 import { logger } from "../../../utils/logger.js";
 
-const DEFAULT_TIMEOUT = 120000; // 2 minutes for analysis
+const DEFAULT_TIMEOUT = 300000; // 5 minutes for analysis (some providers like Zhipu may be slow)
 
 /**
  * Provider parameter configuration

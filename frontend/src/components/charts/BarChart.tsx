@@ -50,6 +50,39 @@ const CustomLabel = (props: any) => {
   );
 };
 
+// Custom X-axis tick component with text truncation and ellipsis
+const CustomXAxisTick = (props: any) => {
+  const { x, y, payload } = props;
+  const maxLength = 15; // Max characters before truncation
+  let label = String(payload.value || "");
+  
+  // Truncate with ellipsis if too long
+  if (label.length > maxLength) {
+    label = label.substring(0, maxLength - 2) + "...";
+  }
+  
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        x={0}
+        y={0}
+        dy={8}
+        textAnchor="end"
+        fill="#666"
+        fontSize={10}
+        transform="rotate(-45)"
+        style={{
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        <title>{payload.value}</title>
+        {label}
+      </text>
+    </g>
+  );
+};
+
 // Lighten a color for hover effect
 const lightenColor = (color: string, amount: number = 0.15): string => {
   const hex = color.replace("#", "");
@@ -125,15 +158,14 @@ export function BarChartComponent({
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis
             dataKey="name"
-            angle={45}
-            textAnchor="start"
-            height={60}
-            tick={{ fontSize: 10 }}
-            label={{ value: xAxisLabel, position: "insideBottom", offset: 0, fontSize: 12, fontWeight: "bold" }}
+            height={80}
+            tick={<CustomXAxisTick />}
+            interval={0}
+            label={{ value: xAxisLabel, position: "insideBottom", offset: -5, fontSize: 12, fontWeight: "bold" }}
           />
           <YAxis
             tick={{ fontSize: 10 }}
-            label={{ value: yAxisLabel, angle: -90, position: "insideLeft", offset: 0, fontSize: 12, fontWeight: "bold" }}
+            label={{ value: yAxisLabel, angle: -90, position: "insideLeft", style: { textAnchor: "middle" }, fontSize: 12, fontWeight: "bold" }}
             domain={[0, (dataMax: number) => Math.ceil(dataMax * 1.1)]}
           />
           <Tooltip

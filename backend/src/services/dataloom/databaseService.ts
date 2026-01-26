@@ -330,6 +330,7 @@ export interface TableExplanation {
   explanation?: string;
   business_purpose?: string;
   keywords?: string;
+  source?: string; // 'agent' = AI-generated, 'user' = manually created/edited
 }
 
 export function createTableExplanation(data: TableExplanation): number {
@@ -339,10 +340,10 @@ export function createTableExplanation(data: TableExplanation): number {
   db.prepare(
     `
     INSERT INTO table_explanations 
-    (id, database_connection_id, schema_name, table_name, explanation, business_purpose, keywords)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    (id, database_connection_id, schema_name, table_name, explanation, business_purpose, keywords, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `,
-  ).run(id, data.database_connection_id, data.schema_name || null, data.table_name, data.explanation || null, data.business_purpose || null, data.keywords || null);
+  ).run(id, data.database_connection_id, data.schema_name || null, data.table_name, data.explanation || null, data.business_purpose || null, data.keywords || null, data.source || "agent");
 
   return id;
 }
@@ -373,6 +374,10 @@ export function updateTableExplanation(id: number, data: Partial<TableExplanatio
   if (data.keywords !== undefined) {
     updates.push("keywords = ?");
     values.push(data.keywords);
+  }
+  if (data.source !== undefined) {
+    updates.push("source = ?");
+    values.push(data.source);
   }
 
   if (updates.length === 0) return;
@@ -409,6 +414,7 @@ export interface ColumnExplanation {
   synonyms?: string;
   sensitivity_level?: string;
   sample_values?: string;
+  source?: string; // 'agent' = AI-generated, 'user' = manually created/edited
 }
 
 export function createColumnExplanation(data: ColumnExplanation): number {
@@ -418,8 +424,8 @@ export function createColumnExplanation(data: ColumnExplanation): number {
   db.prepare(
     `
     INSERT INTO column_explanations 
-    (id, table_explanation_id, column_name, explanation, data_type, business_meaning, synonyms, sensitivity_level, sample_values)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, table_explanation_id, column_name, explanation, data_type, business_meaning, synonyms, sensitivity_level, sample_values, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     id,
@@ -431,6 +437,7 @@ export function createColumnExplanation(data: ColumnExplanation): number {
     data.synonyms || null,
     data.sensitivity_level || null,
     data.sample_values || null,
+    data.source || "agent",
   );
 
   return id;
@@ -454,6 +461,7 @@ export function updateColumnExplanation(id: number, data: Partial<ColumnExplanat
     "synonyms",
     "sensitivity_level",
     "sample_values",
+    "source",
   ];
 
   for (const field of fields) {
@@ -496,6 +504,7 @@ export interface SqlExample {
   tags?: string;
   tables_involved?: string;
   is_learned?: boolean;
+  source?: string; // 'agent' = AI-generated, 'user' = manually created/edited
 }
 
 export function createSqlExample(data: SqlExample): number {
@@ -505,8 +514,8 @@ export function createSqlExample(data: SqlExample): number {
   db.prepare(
     `
     INSERT INTO sql_examples 
-    (id, database_connection_id, natural_language, sql_query, explanation, tags, tables_involved, is_learned)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    (id, database_connection_id, natural_language, sql_query, explanation, tags, tables_involved, is_learned, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     id,
@@ -517,6 +526,7 @@ export function createSqlExample(data: SqlExample): number {
     data.tags || null,
     data.tables_involved || null,
     data.is_learned ? 1 : 0,
+    data.source || "agent",
   );
 
   return id;
@@ -552,6 +562,10 @@ export function updateSqlExample(id: number, data: Partial<SqlExample>): void {
   if (data.is_learned !== undefined) {
     updates.push("is_learned = ?");
     values.push(data.is_learned ? 1 : 0);
+  }
+  if (data.source !== undefined) {
+    updates.push("source = ?");
+    values.push(data.source);
   }
 
   if (updates.length === 0) return;

@@ -356,12 +356,27 @@ export function PieChartComponent({ data, nameKey, valueKey, title, colors = DEF
   const actualValueKeys = valueKeys.map((key) => getActualDataKey(data[0] || {}, key));
 
   const renderPie = (key: string, customColors: string[]) => {
-    const chartData = data
+    const MAX_SLICES = 11; // Maximum number of slices before aggregating into "Others"
+    
+    let chartData = data
       .map((item) => ({
         name: String(getCaseInsensitiveValue(item, actualNameKey) ?? ""),
         value: Number(getCaseInsensitiveValue(item, key) ?? 0),
       }))
-      .filter((item) => item.value > 0); // Filter out zero values
+      .filter((item) => item.value > 0) // Filter out zero values
+      .sort((a, b) => b.value - a.value); // Sort by value descending
+
+    // Aggregate smaller portions into "Others" if too many slices
+    if (chartData.length > MAX_SLICES) {
+      const topSlices = chartData.slice(0, MAX_SLICES - 1);
+      const othersSlices = chartData.slice(MAX_SLICES - 1);
+      const othersValue = othersSlices.reduce((sum, item) => sum + item.value, 0);
+      
+      chartData = [
+        ...topSlices,
+        { name: `Others (${othersSlices.length} items)`, value: othersValue },
+      ];
+    }
 
     const legendItem = findLegendItem(legend, key);
     const pieTitle = legendItem?.name || key;

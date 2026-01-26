@@ -8,7 +8,9 @@ import {
   getColumnExplanationsByTable,
   getSqlExamplesByConnection,
   getTableExplanation,
+  getDatabaseConnection,
 } from "../dataloom/databaseService.js";
+import { getSelectedSchemasFromConnection } from "../dataloom/knowledgeBaseService.js";
 import type { DatabaseSchema, TableAnnotation, ColumnAnnotation, SQLExample } from "../../types/index.js";
 import { logger } from "../../utils/logger.js";
 import { SQL_QUERY_GENERATION_PROMPT } from "../../prompts/index.js";
@@ -75,11 +77,13 @@ export async function buildAIPrompt(
   // System instruction - REQUEST STRUCTURED RESPONSE
   parts.push(SQL_QUERY_GENERATION_PROMPT);
 
-  // Get database schema
+  // Get database schema - respect user's schema selection
   try {
     let schema = useSchema;
     if (!schema) {
-      schema = await getSchema(connectionId);
+      // Get selected schemas from connection config (user's schema selection)
+      const selectedSchemas = getSelectedSchemasFromConnection(connectionId);
+      schema = await getSchema(connectionId, selectedSchemas);
     }
     const schemaContext = formatSchema(schema, cfg.maxSchemaTokens);
     parts.push(`\n## Database Schema\n${schemaContext}`);
@@ -87,33 +91,38 @@ export async function buildAIPrompt(
     logger.warn(`Failed to get schema: ${error}`);
   }
 
-  // Get table explanations (annotations)
+  // Get table explanations (annotations) - all records included, user-created emphasized
   try {
     const tableExplanations = useKB ? useKB.tableExplanations : getTableExplanationsByConnection(connectionId);
     if (tableExplanations.length > 0) {
       const annotationContext = tableExplanations
-        .map((a) => {
-          const parts = [`- ${a.table_name}`];
-          if (a.explanation) parts.push(`  Explanation: ${a.explanation}`);
-          if (a.business_purpose) parts.push(`  Purpose: ${a.business_purpose}`);
+        .map((a: any) => {
+          const isUserDefined = a.source === "user";
+          const prefix = isUserDefined ? "⚠️ [MANDATORY] " : "";
+          const lineParts = [`- ${prefix}${a.table_name}`];
+          if (a.explanation) lineParts.push(`  Explanation: ${a.explanation}`);
+          if (a.business_purpose) lineParts.push(`  Purpose: ${a.business_purpose}`);
           if (a.keywords) {
             try {
               const keywords = JSON.parse(a.keywords);
-              if (Array.isArray(keywords)) parts.push(`  Keywords: ${keywords.join(", ")}`);
+              if (Array.isArray(keywords)) lineParts.push(`  Keywords: ${keywords.join(", ")}`);
             } catch (e) {
               // ignore JSON parse errors
             }
           }
-          return parts.join("\n");
+          if (isUserDefined) {
+            lineParts.push(`  ⚠️ THIS IS A USER-DEFINED RULE - MUST BE STRICTLY FOLLOWED`);
+          }
+          return lineParts.join("\n");
         })
         .join("\n\n");
-      parts.push(`\n## Table Descriptions\n${annotationContext}`);
+      parts.push(`\n## Table Descriptions\nNote: Items marked with ⚠️ [MANDATORY] are user-defined rules that MUST be strictly followed.\n${annotationContext}`);
     }
   } catch (error) {
     logger.warn(`Failed to get table explanations: ${error}`);
   }
 
-  // Get column explanations (annotations) - map by table
+  // Get column explanations (annotations) - all records included, user-created emphasized
   try {
     let tableExplanations = useKB ? useKB.tableExplanations : getTableExplanationsByConnection(connectionId);
     const columnsByTable = new Map<number, any[]>();
@@ -137,50 +146,60 @@ export async function buildAIPrompt(
     }
 
     if (columnsByTable.size > 0) {
-      const columnContext = Array.from(columnsByTable.entries())
-        .map(([tableId, cols]) => {
-          const tableExpl = getTableExplanation(tableId);
-          const tableName = tableExpl?.table_name || `Table ${tableId}`;
-          const lines = [`Table ${tableName}:`];
+      const columnContextLines: string[] = [];
 
-          for (const col of cols) {
-            const parts = [`  - ${col.column_name}`];
-            if (col.explanation) parts.push(`    ${col.explanation}`);
-            if (col.business_meaning) parts.push(`    Meaning: ${col.business_meaning}`);
-            if (col.synonyms) {
-              try {
-                const synonyms = JSON.parse(col.synonyms);
-                if (Array.isArray(synonyms)) parts.push(`    Also known as: ${synonyms.join(", ")}`);
-              } catch (e) {
-                // ignore
-              }
+      for (const [tableId, cols] of columnsByTable.entries()) {
+        const tableExpl = getTableExplanation(tableId);
+        const tableName = tableExpl?.table_name || `Table ${tableId}`;
+        const lines = [`Table ${tableName}:`];
+
+        for (const col of cols) {
+          const isUserDefined = col.source === "user";
+          const prefix = isUserDefined ? "⚠️ [MANDATORY] " : "";
+          const colParts = [`  - ${prefix}${col.column_name}`];
+          if (col.explanation) colParts.push(`    ${col.explanation}`);
+          if (col.business_meaning) colParts.push(`    Meaning: ${col.business_meaning}`);
+          if (col.synonyms) {
+            try {
+              const synonyms = JSON.parse(col.synonyms);
+              if (Array.isArray(synonyms)) colParts.push(`    Also known as: ${synonyms.join(", ")}`);
+            } catch (e) {
+              // ignore
             }
-            if (col.sensitivity_level === "HIGH") parts.push(`    ⚠️ SENSITIVE DATA`);
-            lines.push(parts.join("\n"));
           }
-          return lines.join("\n");
-        })
-        .join("\n\n");
+          if (col.sensitivity_level === "HIGH") colParts.push(`    ⚠️ SENSITIVE DATA`);
+          if (isUserDefined) {
+            colParts.push(`    ⚠️ THIS IS A USER-DEFINED RULE - MUST BE STRICTLY FOLLOWED`);
+          }
+          lines.push(colParts.join("\n"));
+        }
+        columnContextLines.push(lines.join("\n"));
+      }
 
-      if (columnContext) {
-        parts.push(`\n## Column Descriptions\n${columnContext}`);
+      if (columnContextLines.length > 0) {
+        parts.push(`\n## Column Descriptions\nNote: Items marked with ⚠️ [MANDATORY] are user-defined rules that MUST be strictly followed.\n${columnContextLines.join("\n\n")}`);
       }
     }
   } catch (error) {
     logger.warn(`Failed to get column explanations: ${error}`);
   }
 
-  // Get relevant SQL examples
+  // Get ALL SQL examples (no limit - they contain important business logic and patterns)
   try {
     const examples = useKB ? useKB.sqlExamples : getSqlExamplesByConnection(connectionId);
-    const limitedExamples = examples.slice(0, 5);
-    if (limitedExamples.length > 0) {
-      const exampleContext = limitedExamples
-        .map((e, i) => {
-          return `Example ${i + 1}: "${e.natural_language}"\n\`\`\`sql\n${e.sql_query}\n\`\`\``;
+    if (examples.length > 0) {
+      const exampleContext = examples
+        .map((e: any, i: number) => {
+          const isUserDefined = e.source === "user";
+          const prefix = isUserDefined ? "⚠️ [MANDATORY PATTERN] " : "";
+          let result = `${prefix}Example ${i + 1}: "${e.natural_language}"\n\`\`\`sql\n${e.sql_query}\n\`\`\``;
+          if (isUserDefined) {
+            result += `\n⚠️ THIS IS A USER-DEFINED PATTERN - MUST BE USED AS THE CORRECT APPROACH`;
+          }
+          return result;
         })
         .join("\n\n");
-      parts.push(`\n## Example Queries\n${exampleContext}`);
+      parts.push(`\n## Example Queries\nNote: Items marked with ⚠️ [MANDATORY PATTERN] are user-defined and MUST be followed as the correct approach.\n${exampleContext}`);
     }
   } catch (error) {
     logger.warn(`Failed to get SQL examples: ${error}`);

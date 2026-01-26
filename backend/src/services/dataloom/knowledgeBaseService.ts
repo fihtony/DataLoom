@@ -126,20 +126,97 @@ export function getFullKnowledgeBase(connectionId: number): KnowledgeBaseData {
 // Build AI Analysis Prompt
 // =============================================================================
 
+/**
+ * Extract selected schemas from connection config
+ * Returns undefined if:
+ * - Database type doesn't support schemas (e.g., SQLite)
+ * - No schema selection is stored
+ * - All schemas are selected (same as no filter)
+ */
+export function getSelectedSchemasFromConnection(connectionId: number): string[] | undefined {
+  const connection = getDatabaseConnection(connectionId);
+  if (!connection || !connection.config) return undefined;
+
+  // SQLite doesn't have schemas - always return undefined
+  if (connection.type === "sqlite") {
+    return undefined;
+  }
+
+  // Only PostgreSQL and SQL Server support schema selection
+  if (connection.type !== "postgresql" && connection.type !== "sqlserver") {
+    return undefined;
+  }
+
+  try {
+    const configData = typeof connection.config === "string" ? JSON.parse(connection.config) : connection.config;
+    if (configData.schema && typeof configData.schema === "string") {
+      // config.schema is stored as JSON string array like: [{"name":"public","isSelected":true}]
+      const schemaArray = JSON.parse(configData.schema);
+      if (Array.isArray(schemaArray)) {
+        const selected = schemaArray.filter((s: any) => s.isSelected).map((s: any) => s.name);
+        return selected.length > 0 ? selected : undefined;
+      }
+    }
+  } catch (e) {
+    // Ignore parse errors, return undefined to use all schemas
+  }
+  return undefined;
+}
+
 // =============================================================================
 // Build Phase 1 Prompt - Table Structure Analysis
 // =============================================================================
 
-export async function buildPhase1Prompt(connectionId: number): Promise<string> {
+interface PromptOptions {
+  userInput?: string;
+  files?: Array<{ name: string; content: string }>;
+  selectedSchemas?: string[]; // Optional: filter to specific schemas
+}
+
+export async function buildPhase1Prompt(connectionId: number, options?: PromptOptions): Promise<string> {
   const connection = getDatabaseConnection(connectionId);
   const dbType = connection?.type || "unknown";
   const isSqlite = dbType === "sqlite";
 
   const systemPrompt = isSqlite ? DATABASE_PHASE1_NO_SCHEMA_PROMPT : DATABASE_PHASE1_WITH_SCHEMA_PROMPT;
 
+  // Get existing knowledge base - all records included, user-defined emphasized
+  const existingKB = getFullKnowledgeBase(connectionId);
+  let existingKBText = "(No existing knowledge base)";
+  if (existingKB.tableExplanations.length > 0 || existingKB.sqlExamples.length > 0) {
+    const kbSummary: any = {
+      note: "Items marked with 'MANDATORY: true' are USER-DEFINED and MUST be strictly followed",
+      tableExplanations: existingKB.tableExplanations.map((t: any) => ({
+        table_name: t.table_name,
+        schema_name: t.schema_name,
+        explanation: t.explanation,
+        business_purpose: t.business_purpose,
+        MANDATORY: t.source === "user", // User-defined rules are mandatory
+        columns: t.columns?.map((c: any) => ({
+          column_name: c.column_name,
+          explanation: c.explanation,
+          business_meaning: c.business_meaning,
+          MANDATORY: c.source === "user", // User-defined column rules are mandatory
+        })),
+      })),
+    };
+    existingKBText = JSON.stringify(kbSummary, null, 2);
+  }
+
+  // Build user input text
+  const userInputText = options?.userInput?.trim() || "(No user input provided)";
+
+  // Build uploaded files text
+  let filesText = "(No files uploaded)";
+  if (options?.files && options.files.length > 0) {
+    filesText = options.files.map(f => `--- ${f.name} ---\n${f.content}`).join("\n\n");
+  }
+
   let schemaText = "\n## Database Schema:\n";
   try {
-    const schema = await getSchema(connectionId);
+    // Use selectedSchemas from options, or extract from connection config
+    const schemasToUse = options?.selectedSchemas || getSelectedSchemasFromConnection(connectionId);
+    const schema = await getSchema(connectionId, schemasToUse);
     schema.tables.forEach((table: any) => {
       const schemaPrefix = table.schema ? `${table.schema}.` : "";
       schemaText += `\nTable: ${schemaPrefix}${table.name}`;
@@ -158,14 +235,19 @@ export async function buildPhase1Prompt(connectionId: number): Promise<string> {
     schemaText = "\n## Database Schema: (Failed to fetch)\n";
   }
 
-  return systemPrompt + schemaText;
+  let prompt = systemPrompt
+    .replace("[EXISTING_KB_PLACEHOLDER]", existingKBText)
+    .replace("[USER_INPUT_PLACEHOLDER]", userInputText)
+    .replace("[UPLOADED_FILES_PLACEHOLDER]", filesText);
+
+  return prompt + schemaText;
 }
 
 // =============================================================================
 // Build Phase 2 Prompt - Column Explanations
 // =============================================================================
 
-export async function buildPhase2Prompt(connectionId: number, phase1Result: AnalysisResult): Promise<string> {
+export async function buildPhase2Prompt(connectionId: number, phase1Result: AnalysisResult, options?: PromptOptions): Promise<string> {
   const connection = getDatabaseConnection(connectionId);
   const dbType = connection?.type || "unknown";
   const isSqlite = dbType === "sqlite";
@@ -174,7 +256,9 @@ export async function buildPhase2Prompt(connectionId: number, phase1Result: Anal
 
   let schemaText = "\n## Database Schema:\n";
   try {
-    const schema = await getSchema(connectionId);
+    // Use selectedSchemas from options, or extract from connection config
+    const schemasToUse = options?.selectedSchemas || getSelectedSchemasFromConnection(connectionId);
+    const schema = await getSchema(connectionId, schemasToUse);
     schema.tables.forEach((table: any) => {
       const schemaPrefix = table.schema ? `${table.schema}.` : "";
       schemaText += `\nTable: ${schemaPrefix}${table.name}`;
@@ -204,16 +288,67 @@ export async function buildPhase2Prompt(connectionId: number, phase1Result: Anal
 // Build Phase 3 Prompt - SQL Examples and Final Merge
 // =============================================================================
 
-export async function buildPhase3Prompt(connectionId: number, phase2Result: AnalysisResult, userInput?: string): Promise<string> {
+export async function buildPhase3Prompt(connectionId: number, phase2Result: AnalysisResult, options?: PromptOptions): Promise<string> {
   const connection = getDatabaseConnection(connectionId);
   const dbType = connection?.type || "unknown";
   const isSqlite = dbType === "sqlite";
 
   const systemPrompt = isSqlite ? DATABASE_PHASE3_NO_SCHEMA_PROMPT : DATABASE_PHASE3_WITH_SCHEMA_PROMPT;
 
+  // Get existing knowledge base - all records included, user-defined emphasized
+  const existingKB = getFullKnowledgeBase(connectionId);
+  
+  // Build existing KB text with table explanations - all included, user-defined marked as MANDATORY
+  let existingKBText = "(No existing knowledge base)";
+  if (existingKB.tableExplanations.length > 0) {
+    const kbSummary = {
+      note: "Items with 'MANDATORY: true' are USER-DEFINED and MUST be strictly followed when generating SQL",
+      tables: existingKB.tableExplanations.map((t: any) => ({
+        table_name: t.table_name,
+        schema_name: t.schema_name,
+        explanation: t.explanation,
+        business_purpose: t.business_purpose,
+        MANDATORY: t.source === "user",
+        columns: t.columns?.map((c: any) => ({
+          column_name: c.column_name,
+          explanation: c.explanation,
+          business_meaning: c.business_meaning,
+          MANDATORY: c.source === "user",
+        })),
+      })),
+    };
+    existingKBText = JSON.stringify(kbSummary, null, 2);
+  }
+
+  // Build existing SQL examples text - all included, user-defined marked as MANDATORY
+  let existingSqlExamplesText = "(No existing SQL examples)";
+  if (existingKB.sqlExamples.length > 0) {
+    const sqlSummary = {
+      note: "Items with 'MANDATORY: true' are USER-DEFINED patterns that MUST be used as the correct approach",
+      examples: existingKB.sqlExamples.map((s: any) => ({
+        natural_language: s.natural_language,
+        sql_query: s.sql_query,
+        tables_involved: s.tables_involved,
+        MANDATORY: s.source === "user",
+      })),
+    };
+    existingSqlExamplesText = JSON.stringify(sqlSummary, null, 2);
+  }
+
+  // Build user input text
+  const userInputText = options?.userInput?.trim() || "(No user input provided)";
+
+  // Build uploaded files text
+  let filesText = "(No files uploaded)";
+  if (options?.files && options.files.length > 0) {
+    filesText = options.files.map(f => `--- ${f.name} ---\n${f.content}`).join("\n\n");
+  }
+
   let schemaText = "\n## Database Schema:\n";
   try {
-    const schema = await getSchema(connectionId);
+    // Use selectedSchemas from options, or extract from connection config
+    const schemasToUse = options?.selectedSchemas || getSelectedSchemasFromConnection(connectionId);
+    const schema = await getSchema(connectionId, schemasToUse);
     schema.tables.forEach((table: any) => {
       const schemaPrefix = table.schema ? `${table.schema}.` : "";
       schemaText += `\nTable: ${schemaPrefix}${table.name}`;
@@ -233,9 +368,12 @@ export async function buildPhase3Prompt(connectionId: number, phase2Result: Anal
   }
 
   let prompt = systemPrompt
+    .replace("[EXISTING_KB_PLACEHOLDER]", existingKBText)
+    .replace("[EXISTING_SQL_EXAMPLES_PLACEHOLDER]", existingSqlExamplesText)
+    .replace("[UPLOADED_FILES_PLACEHOLDER]", filesText)
     .replace("[PHASE1_PHASE2_KB_PLACEHOLDER]", JSON.stringify(phase2Result, null, 2))
     .replace("[SCHEMA_PLACEHOLDER]", schemaText)
-    .replace("[USER_INPUT_PLACEHOLDER]", userInput && userInput.trim() ? userInput : "(No user input provided)");
+    .replace("[USER_INPUT_PLACEHOLDER]", userInputText);
 
   return prompt;
 }

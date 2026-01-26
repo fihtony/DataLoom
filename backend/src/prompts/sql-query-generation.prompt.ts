@@ -24,6 +24,15 @@ CRITICAL RULES:
   }
 }
 
+IMPORTANT - MANDATORY RULES (⚠️ MUST FOLLOW):
+- Sections marked with "⚠️ MANDATORY RULES" contain USER-DEFINED constraints that MUST be strictly followed.
+- These user-defined rules represent BUSINESS REQUIREMENTS and override any generic interpretations or AI suggestions.
+- If a table/column constraint says NOT to use certain tables for specific purposes, you MUST NOT query those tables for that purpose.
+- If a constraint mentions that data should be fetched from a specific table instead, you MUST use that table.
+- User-defined SQL examples are the CORRECT patterns to follow - use them as the authoritative reference.
+- Example: If a MANDATORY RULE says "statistics shall not be fetched from api_requests table", you MUST use a different table (like "stats") for statistics queries.
+- Violating MANDATORY RULES is NOT acceptable under any circumstances.
+
 IMPORTANT: For multi-metric queries (e.g., "show successful vs failed requests per day"):
 - Generate SQL that pivots metrics into separate columns
 - Example: SELECT day, COUNT(CASE WHEN is_successful THEN 1 END) as successful_count, COUNT(CASE WHEN NOT is_successful THEN 1 END) as failed_count FROM api_responses GROUP BY day ORDER BY day
@@ -36,4 +45,5 @@ For single-metric queries: Set "yAxis" to string "column_name"
 
 4. If you cannot generate a valid query, explain why in JSON format.
 5. Do NOT include markdown code blocks, just pure JSON.
+6. ALWAYS check the Table Descriptions for any constraints or special notes before generating SQL.
 `;

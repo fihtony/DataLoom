@@ -18,8 +18,19 @@
  */
 export const DATABASE_PHASE1_WITH_SCHEMA_PROMPT = `You are a database schema analyst. Analyze the database schema and generate a basic knowledge base focused on table structure.
 
+IMPORTANT: Consider the EXISTING KNOWLEDGE BASE provided below. This contains manually curated explanations and important notes about the tables. You MUST respect and preserve these explanations - they represent business requirements and constraints that override generic interpretations.
+
+EXISTING KNOWLEDGE BASE (if any):
+[EXISTING_KB_PLACEHOLDER]
+
+USER NOTES (if any):
+[USER_INPUT_PLACEHOLDER]
+
+UPLOADED DOCUMENTS (if any):
+[UPLOADED_FILES_PLACEHOLDER]
+
 TASK: For each table, identify:
-1. Table purpose (brief, 1-2 sentences)
+1. Table purpose (brief, 1-2 sentences) - USE existing explanations if available
 2. Column names and data types
 3. Primary/foreign keys
 4. Basic relationships
@@ -46,15 +57,28 @@ OUTPUT: Return ONLY valid JSON:
   "sqlExamples": []
 }
 
-CRITICAL: Always specify data_type for every column`;
+CRITICAL: 
+1. Always specify data_type for every column
+2. PRESERVE existing explanations from the knowledge base - they contain important business rules`;
 
 /**
  * Phase 1 (No Schema) - Table Structure Analysis
  */
 export const DATABASE_PHASE1_NO_SCHEMA_PROMPT = `You are a database schema analyst. Analyze the database schema and generate a basic knowledge base focused on table structure.
 
+IMPORTANT: Consider the EXISTING KNOWLEDGE BASE provided below. This contains manually curated explanations and important notes about the tables. You MUST respect and preserve these explanations - they represent business requirements and constraints that override generic interpretations.
+
+EXISTING KNOWLEDGE BASE (if any):
+[EXISTING_KB_PLACEHOLDER]
+
+USER NOTES (if any):
+[USER_INPUT_PLACEHOLDER]
+
+UPLOADED DOCUMENTS (if any):
+[UPLOADED_FILES_PLACEHOLDER]
+
 TASK: For each table, identify:
-1. Table purpose (brief, 1-2 sentences)
+1. Table purpose (brief, 1-2 sentences) - USE existing explanations if available
 2. Column names and data types
 3. Primary/foreign keys
 4. Basic relationships
@@ -80,7 +104,9 @@ OUTPUT: Return ONLY valid JSON:
   "sqlExamples": []
 }
 
-CRITICAL: Always specify data_type for every column`;
+CRITICAL: 
+1. Always specify data_type for every column
+2. PRESERVE existing explanations from the knowledge base - they contain important business rules`;
 
 // =============================================================================
 // PHASE 2: Column Explanations
@@ -192,6 +218,17 @@ CRITICAL:
  */
 export const DATABASE_PHASE3_WITH_SCHEMA_PROMPT = `You are a database schema analyst. Generate SQL examples and produce the final comprehensive knowledge base.
 
+IMPORTANT: Consider the EXISTING KNOWLEDGE BASE provided below. This contains manually curated explanations and important notes about the tables. You MUST respect these explanations - they represent business requirements and constraints that MUST be followed when generating SQL examples.
+
+EXISTING KNOWLEDGE BASE FROM DATABASE (manually curated - MUST RESPECT):
+[EXISTING_KB_PLACEHOLDER]
+
+EXISTING SQL EXAMPLES (for reference - do not duplicate):
+[EXISTING_SQL_EXAMPLES_PLACEHOLDER]
+
+UPLOADED DOCUMENTS (if any):
+[UPLOADED_FILES_PLACEHOLDER]
+
 TASK: 
 1. Preserve all data from Phase 1 and Phase 2
 2. Generate 5-10 realistic SQL examples for common queries
@@ -245,16 +282,30 @@ SQL GENERATION RULES:
 3. Use schema-qualified table names (e.g., public.users, dbo.orders)
 4. Make examples realistic based on relationships
 5. Include common business queries
+6. IMPORTANT: Follow constraints from EXISTING KNOWLEDGE BASE - if a table explanation says not to use certain tables for specific purposes, DO NOT generate SQL examples that violate those constraints
+7. Do not duplicate existing SQL examples
 
 CRITICAL:
 1. PRESERVE ALL Phase 1 and Phase 2 data exactly
 2. ONLY ADD sqlExamples array with new examples
-3. Return ONLY valid JSON`;
+3. RESPECT ALL constraints and notes in the EXISTING KNOWLEDGE BASE
+4. Return ONLY valid JSON`;
 
 /**
  * Phase 3 (No Schema) - SQL Examples and Final Merge
  */
 export const DATABASE_PHASE3_NO_SCHEMA_PROMPT = `You are a database schema analyst. Generate SQL examples and produce the final comprehensive knowledge base.
+
+IMPORTANT: Consider the EXISTING KNOWLEDGE BASE provided below. This contains manually curated explanations and important notes about the tables. You MUST respect these explanations - they represent business requirements and constraints that MUST be followed when generating SQL examples.
+
+EXISTING KNOWLEDGE BASE FROM DATABASE (manually curated - MUST RESPECT):
+[EXISTING_KB_PLACEHOLDER]
+
+EXISTING SQL EXAMPLES (for reference - do not duplicate):
+[EXISTING_SQL_EXAMPLES_PLACEHOLDER]
+
+UPLOADED DOCUMENTS (if any):
+[UPLOADED_FILES_PLACEHOLDER]
 
 TASK:
 1. Preserve all data from Phase 1 and Phase 2
@@ -307,8 +358,11 @@ SQL GENERATION RULES:
 2. Cover: SELECT, JOIN, COUNT, GROUP BY, WHERE, ORDER BY patterns
 3. Make examples realistic based on relationships
 4. Include common business queries
+5. IMPORTANT: Follow constraints from EXISTING KNOWLEDGE BASE - if a table explanation says not to use certain tables for specific purposes, DO NOT generate SQL examples that violate those constraints
+6. Do not duplicate existing SQL examples
 
 CRITICAL:
 1. PRESERVE ALL Phase 1 and Phase 2 data exactly
 2. ONLY ADD sqlExamples array with new examples
-3. Return ONLY valid JSON`;
+3. RESPECT ALL constraints and notes in the EXISTING KNOWLEDGE BASE
+4. Return ONLY valid JSON`;

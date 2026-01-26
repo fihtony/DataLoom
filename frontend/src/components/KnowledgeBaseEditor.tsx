@@ -878,12 +878,13 @@ export function KnowledgeBaseEditor(props: KnowledgeBaseEditorProps) {
                         <Tab
                           key={table}
                           value={table}
+                          sx={{ textTransform: "none" }}
                           label={
                             <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                              <span>{table}</span>
+                              <span style={{ fontSize: "0.95rem", lineHeight: 1 }}>{table}</span>
                               {tableSchema && (
-                                <Typography variant="caption" sx={{ fontSize: "0.60rem", lineHeight: 1, mt: 0.25 }}>
-                                  <strong>{tableSchema.toLowerCase()}</strong>
+                                <Typography variant="caption" sx={{ fontSize: "0.80rem", lineHeight: 1, mt: 0.25 }}>
+                                  <strong>{tableSchema}</strong>
                                 </Typography>
                               )}
                             </Box>

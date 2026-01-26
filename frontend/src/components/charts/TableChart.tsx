@@ -40,9 +40,6 @@ export function TableChart({ data, columns, title }: TableChartProps) {
                   }}
                 >
                   {col.name}
-                  <Typography variant="caption" sx={{ display: "block", fontWeight: "normal", opacity: 0.8, fontSize: "10px" }}>
-                    ({col.type})
-                  </Typography>
                 </TableCell>
               ))}
             </TableRow>

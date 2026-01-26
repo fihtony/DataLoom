@@ -790,10 +790,44 @@ export function DatabasePage() {
                                       <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
                                         <Typography variant="body2">{col.name}</Typography>
                                         {col.primaryKey && (
-                                          <Chip label="PK" size="small" color="error" variant="filled" sx={{ height: 20 }} />
+                                          <Box
+                                            component="span"
+                                            sx={{
+                                              display: "inline-flex",
+                                              alignItems: "center",
+                                              justifyContent: "center",
+                                              px: 0.5,
+                                              py: 0.1,
+                                              fontSize: "0.6rem",
+                                              fontWeight: 600,
+                                              borderRadius: "4px",
+                                              backgroundColor: "error.main",
+                                              color: "white",
+                                              lineHeight: 1.2,
+                                            }}
+                                          >
+                                            PK
+                                          </Box>
                                         )}
                                         {col.foreignKey && (
-                                          <Chip label="FK" size="small" color="success" variant="filled" sx={{ height: 20 }} />
+                                          <Box
+                                            component="span"
+                                            sx={{
+                                              display: "inline-flex",
+                                              alignItems: "center",
+                                              justifyContent: "center",
+                                              px: 0.5,
+                                              py: 0.1,
+                                              fontSize: "0.6rem",
+                                              fontWeight: 600,
+                                              borderRadius: "4px",
+                                              backgroundColor: "success.main",
+                                              color: "white",
+                                              lineHeight: 1.2,
+                                            }}
+                                          >
+                                            FK
+                                          </Box>
                                         )}
                                       </Box>
                                     </TableCell>

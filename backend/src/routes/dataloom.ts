@@ -430,7 +430,8 @@ router.post("/connections/:id/analyze", async (req: Request, res: Response) => {
     analysisProgress.phases.phase1 = "In progress...";
     analysisProgress.lastUpdateTime = Date.now();
 
-    const phase1Prompt = await buildPhase1Prompt(connectionId);
+    const promptOptions = { userInput, files };
+    const phase1Prompt = await buildPhase1Prompt(connectionId, promptOptions);
     const phase1PromptSize = Buffer.byteLength(phase1Prompt, "utf-8");
     logger.info(`[ANALYZE-PHASE1] Phase 1 prompt size: ${phase1PromptSize} bytes`);
     logger.debug(`[ANALYZE-PHASE1] First 100 lines of phase 1 prompt:\n${phase1Prompt.split("\n").slice(0, 100).join("\n")}`);
@@ -441,7 +442,7 @@ router.post("/connections/:id/analyze", async (req: Request, res: Response) => {
     const phase1Response = await agentService.chat(selectedAgent, {
       prompt: phase1Prompt,
       model: chatModel,
-      timeout: 120000, // 2 minutes for Phase 1
+      timeout: 300000, // 5 minutes for Phase 1 (some providers like Zhipu may be slow)
       maxTokens: selectedAgent.max_tokens || undefined,
       sessionId: analysisSessionId, // Use same session for all phases
     });
@@ -452,7 +453,7 @@ router.post("/connections/:id/analyze", async (req: Request, res: Response) => {
 
       // Fallback: Try simplified analysis with Phase 1 only
       try {
-        const simplifiedPrompt = await buildPhase1Prompt(connectionId);
+        const simplifiedPrompt = await buildPhase1Prompt(connectionId, promptOptions);
         const retryResponse = await agentService.chat(selectedAgent, {
           prompt: simplifiedPrompt,
           model: chatModel,
@@ -521,7 +522,7 @@ router.post("/connections/:id/analyze", async (req: Request, res: Response) => {
     // === PHASE 2: Column Explanations Analysis ===
     logger.info(`[ANALYZE-PHASE2] Starting Phase 2: Column explanations based on Phase 1 results`);
 
-    const phase2Prompt = await buildPhase2Prompt(connectionId, phase1Result);
+    const phase2Prompt = await buildPhase2Prompt(connectionId, phase1Result, promptOptions);
     const phase2PromptSize = Buffer.byteLength(phase2Prompt, "utf-8");
     logger.info(`[ANALYZE-PHASE2] Phase 2 prompt size: ${phase2PromptSize} bytes`);
     logger.debug(`[ANALYZE-PHASE2] First 100 lines of phase 2 prompt:\n${phase2Prompt.split("\n").slice(0, 100).join("\n")}`);
@@ -532,7 +533,7 @@ router.post("/connections/:id/analyze", async (req: Request, res: Response) => {
     const phase2Response = await agentService.chat(selectedAgent, {
       prompt: phase2Prompt,
       model: chatModel,
-      timeout: 120000, // 2 minutes for Phase 2
+      timeout: 300000, // 5 minutes for Phase 2 (some providers like Zhipu may be slow)
       maxTokens: selectedAgent.max_tokens || undefined,
       sessionId: analysisSessionId, // Use same session for all phases
     });
@@ -587,7 +588,7 @@ router.post("/connections/:id/analyze", async (req: Request, res: Response) => {
     // === PHASE 3: SQL Examples and Final Assembly ===
     logger.info(`[ANALYZE-PHASE3] Starting Phase 3: SQL examples generation and final assembly`);
 
-    const phase3Prompt = await buildPhase3Prompt(connectionId, phase2Result, userInput);
+    const phase3Prompt = await buildPhase3Prompt(connectionId, phase2Result, promptOptions);
     const phase3PromptSize = Buffer.byteLength(phase3Prompt, "utf-8");
     logger.info(`[ANALYZE-PHASE3] Phase 3 prompt size: ${phase3PromptSize} bytes`);
     logger.debug(`[ANALYZE-PHASE3] First 100 lines of phase 3 prompt:\n${phase3Prompt.split("\n").slice(0, 100).join("\n")}`);
@@ -598,7 +599,7 @@ router.post("/connections/:id/analyze", async (req: Request, res: Response) => {
     const phase3Response = await agentService.chat(selectedAgent, {
       prompt: phase3Prompt,
       model: chatModel,
-      timeout: 120000, // 2 minutes for Phase 3
+      timeout: 300000, // 5 minutes for Phase 3 (some providers like Zhipu may be slow)
       maxTokens: selectedAgent.max_tokens || undefined,
       sessionId: analysisSessionId, // Use same session for all phases
     });
@@ -1132,7 +1133,8 @@ router.put("/table-explanations/:id", (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     const { explanation, business_purpose, keywords } = req.body;
 
-    updateTableExplanation(id, { explanation, business_purpose, keywords });
+    // Set source='user' when user edits from UI
+    updateTableExplanation(id, { explanation, business_purpose, keywords, source: "user" });
 
     res.json({ message: "Table explanation updated" });
   } catch (error: any) {
@@ -1175,6 +1177,7 @@ router.post("/column-explanations", (req: Request, res: Response) => {
     const { table_explanation_id, column_name, explanation, data_type, business_meaning, synonyms, sensitivity_level, sample_values } =
       req.body;
 
+    // Set source='user' when user creates from UI
     const id = createColumnExplanation({
       table_explanation_id,
       column_name,
@@ -1184,6 +1187,7 @@ router.post("/column-explanations", (req: Request, res: Response) => {
       synonyms,
       sensitivity_level,
       sample_values,
+      source: "user",
     });
 
     res.json({ id, message: "Column explanation created" });
@@ -1216,6 +1220,7 @@ router.put("/column-explanations/:id", (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     const { explanation, data_type, business_meaning, synonyms, sensitivity_level, sample_values } = req.body;
 
+    // Set source='user' when user edits from UI
     updateColumnExplanation(id, {
       explanation,
       data_type,
@@ -1223,6 +1228,7 @@ router.put("/column-explanations/:id", (req: Request, res: Response) => {
       synonyms,
       sensitivity_level,
       sample_values,
+      source: "user",
     });
 
     res.json({ message: "Column explanation updated" });
@@ -1265,6 +1271,7 @@ router.post("/sql-examples", (req: Request, res: Response) => {
   try {
     const { database_connection_id, natural_language, sql_query, explanation, tags, tables_involved, is_learned } = req.body;
 
+    // Set source='user' when user creates from UI
     const id = createSqlExample({
       database_connection_id,
       natural_language,
@@ -1273,6 +1280,7 @@ router.post("/sql-examples", (req: Request, res: Response) => {
       tags,
       tables_involved,
       is_learned,
+      source: "user",
     });
 
     res.json({ id, message: "SQL example created" });
@@ -1305,7 +1313,8 @@ router.put("/sql-examples/:id", (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     const { natural_language, sql_query, explanation, tables_involved, is_learned } = req.body;
 
-    updateSqlExample(id, { natural_language, sql_query, explanation, tables_involved, is_learned });
+    // Set source='user' when user edits from UI
+    updateSqlExample(id, { natural_language, sql_query, explanation, tables_involved, is_learned, source: "user" });
 
     res.json({ message: "SQL example updated" });
   } catch (error: any) {
@@ -1349,12 +1358,14 @@ router.post("/connections/:connectionId/sql-examples", (req: Request, res: Respo
       return res.status(400).json({ error: "natural_language and sql_query are required" });
     }
 
+    // Set source='user' when user creates from UI
     const id = createSqlExample({
       database_connection_id: connectionId,
       natural_language,
       sql_query,
       explanation: explanation || "",
       tables_involved: tables_involved || JSON.stringify([]),
+      source: "user",
     });
 
     logger.info(`SQL example created with ID: ${id} for connection ${connectionId}`);

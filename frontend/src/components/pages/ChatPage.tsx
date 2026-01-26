@@ -1,5 +1,5 @@
 // =============================================================================
-// Chat Page - Chat with AI Agent
+// Chat Page - Chat with AI Provider
 // =============================================================================
 
 import { useState, useRef, useEffect } from "react";
@@ -155,7 +155,7 @@ export function ChatPage() {
     }
 
     if (!selectedAgent) {
-      setValidationMessage("Please select an AI Agent");
+      setValidationMessage("Please select an AI Provider");
       setValidationDialogOpen(true);
       return;
     }
@@ -187,8 +187,8 @@ export function ChatPage() {
             width: "100%",
             py: 0.5,
             px: 2,
-            backgroundColor: readOnlyStatus === "readonly" ? "#4caf50" : "#f44336",
-            color: "white",
+            backgroundColor: readOnlyStatus === "readonly" ? "#4caf50" : "#ff9800",
+            color: readOnlyStatus === "readonly" ? "white" : "#000",
             fontSize: "11px",
             fontWeight: 600,
             textAlign: "center",
@@ -197,7 +197,7 @@ export function ChatPage() {
         >
           {readOnlyStatus === "readonly"
             ? "🔒 READ ONLY CONNECTION - Safe to query"
-            : "⚠️  WRITE ACCESS - This connection has write permissions"}
+            : "⚠️ CONNECTION HAS WRITE ACCESS - Consider using a read-only database user for safer queries"}
         </Box>
       )}
 
@@ -269,12 +269,12 @@ export function ChatPage() {
             {/* Agent & Model Section */}
             <Box sx={{ display: "flex", gap: 1, alignItems: "flex-end", flex: 1, minWidth: 300 }}>
               <FormControl size="small" sx={{ minWidth: 160, flex: 1 }}>
-                <Tooltip title="Select an AI agent for conversation" arrow placement="top">
-                  <InputLabel>AI Agent</InputLabel>
+                <Tooltip title="Select an AI provider for conversation" arrow placement="top">
+                  <InputLabel>AI Provider</InputLabel>
                 </Tooltip>
                 <Select
                   value={selectedAgent?.id || ""}
-                  label="AI Agent"
+                  label="AI Provider"
                   onChange={(e) => {
                     const agent = agents.find((a) => a.id === e.target.value);
                     selectAgent(agent || null);
@@ -480,7 +480,7 @@ export function ChatPage() {
               {selectedAgent && (
                 <Chip
                   size="small"
-                  label={`Agent: ${selectedAgent.name}`}
+                  label={`Provider: ${selectedAgent.name}`}
                   color="primary"
                   variant="outlined"
                   sx={{ fontSize: "0.55rem", height: 16, "& .MuiChip-label": { px: 1 } }}
