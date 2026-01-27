@@ -17,6 +17,7 @@ import {
   getAiAgent,
   getDefaultAiAgent,
 } from "../services/dataloom/databaseService.js";
+import { getSelectedSchemasFromConnection } from "../services/dataloom/knowledgeBaseService.js";
 import { logger } from "../utils/logger.js";
 import type { LegendItem } from "../types/index.js";
 
@@ -487,9 +488,89 @@ router.post("/", async (req: Request, res: Response) => {
     }
 
     if (!extractedSQL) {
-      const errorMsg = providerStatus.available
-        ? "AI did not generate a valid SQL query"
-        : `Could not generate SQL from natural language. AI provider (${selectedAgent.provider}) is not available: ${providerStatus.error || "Unknown error"}`;
+      // Build a helpful error message with database context
+      let errorMsg = "";
+      
+      if (!providerStatus.available) {
+        errorMsg = `Could not generate SQL from natural language. AI provider (${selectedAgent.provider}) is not available: ${providerStatus.error || "Unknown error"}`;
+      } else {
+        // AI provider is available but didn't generate SQL - provide helpful context
+        try {
+          // Get user-selected schemas (if any) to filter tables
+          const selectedSchemas = getSelectedSchemasFromConnection(connectionId);
+          
+          // Get schema filtered by user selection
+          const schema = await connectionManager.getSchema(connectionId, selectedSchemas);
+          
+          // Get all table explanations and filter by selected schemas
+          const allTableExplanations = getTableExplanationsByConnection(connectionId);
+          let tableExplanations = allTableExplanations;
+          
+          // Filter table explanations by selected schemas (if schemas are selected)
+          if (selectedSchemas && selectedSchemas.length > 0) {
+            tableExplanations = allTableExplanations.filter(t => {
+              const tableSchema = (t as any).schema_name;
+              // If table has no schema_name, include it (for SQLite or legacy data)
+              if (!tableSchema) return true;
+              // Include only if schema matches selected schemas
+              return selectedSchemas.includes(tableSchema);
+            });
+          }
+          
+          // Build database summary
+          const tableCount = schema.tables.length;
+          const hasTableExplanations = tableExplanations.length > 0;
+          
+          // Build helpful error message
+          const parts: string[] = [];
+          parts.push("I couldn't generate a SQL query for your question.");
+          
+          if (tableCount > 0) {
+            // List table names (limit to first 10 for brevity)
+            const tableNames = schema.tables
+              .slice(0, 10)
+              .map(t => {
+                const tableName = (t as any).schema ? `${(t as any).schema}.${t.name}` : t.name;
+                return tableName;
+              });
+            
+            if (tableCount <= 10) {
+              parts.push(`This database contains ${tableCount} table${tableCount > 1 ? "s" : ""}: ${tableNames.join(", ")}.`);
+            } else {
+              parts.push(`This database contains ${tableCount} tables, including: ${tableNames.join(", ")}, and ${tableCount - 10} more.`);
+            }
+          }
+          
+          if (hasTableExplanations) {
+            // Show table descriptions (limit to first 3 for brevity)
+            const tableDescriptions = tableExplanations
+              .slice(0, 3)
+              .map(t => {
+                const tableName = (t as any).schema_name ? `${(t as any).schema_name}.${t.table_name}` : t.table_name;
+                let desc = `- ${tableName}`;
+                if (t.explanation) {
+                  desc += `: ${t.explanation}`;
+                } else if (t.business_purpose) {
+                  desc += ` (${t.business_purpose})`;
+                }
+                return desc;
+              });
+            
+            if (tableDescriptions.length > 0) {
+              parts.push(`\nAvailable data includes:\n${tableDescriptions.join("\n")}${tableExplanations.length > 3 ? `\n... and ${tableExplanations.length - 3} more tables with descriptions` : ""}`);
+            }
+          }
+          
+          parts.push("\nPlease provide more specific details about what you'd like to query, such as which table(s) you're interested in, what information you want to retrieve, or any specific conditions or filters you need.");
+          
+          errorMsg = parts.join(" ");
+        } catch (contextError) {
+          // If we can't get context, use a simpler message
+          logger.warn(`Failed to build context for NO_SQL_GENERATED error: ${contextError}`);
+          errorMsg = "I couldn't generate a SQL query for your question. Please provide more specific details about what data you'd like to query, including which tables or information you're interested in.";
+        }
+      }
+      
       return res.status(400).json({
         success: false,
         error: errorMsg,
