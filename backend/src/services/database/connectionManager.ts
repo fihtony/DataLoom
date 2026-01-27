@@ -16,12 +16,17 @@ import { getDataLoomDb } from "../dataloom/databaseService.js";
 // Connection pool storage (only keep active pools, no config cache)
 const connectionPools: Map<number, Database.Database | pg.Pool | sql.ConnectionPool> = new Map();
 
-// Connection session storage: sessionId -> {connectionId, createdAt, schemaCache, kbCache}
+// Idle timeout configuration
+// For testing: 60 seconds, for production: 5 minutes (300 seconds)
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes for testing (should be 5 * 60 * 1000 in production)
+
+// Connection session storage: sessionId -> {connectionId, createdAt, lastActivityAt, schemaCache, kbCache}
 const connectionSessions: Map<
   string,
   {
     connectionId: number;
     createdAt: number;
+    lastActivityAt: number; // Track last activity time for idle timeout
     schemaCache?: DatabaseSchema;
     kbCache?: { tableExplanations: any[]; columnExplanations: Map<number, any[]>; sqlExamples: any[] };
   }
@@ -268,9 +273,11 @@ export async function initializeConnection(
 
   // Generate a unique session ID for this connection
   const sessionId = crypto.randomUUID();
+  const now = Date.now();
   connectionSessions.set(sessionId, {
     connectionId: connection.id,
-    createdAt: Date.now(),
+    createdAt: now,
+    lastActivityAt: now, // Initialize last activity time
   });
 
   logger.info(
@@ -929,6 +936,48 @@ export async function deleteConnection(connectionId: number): Promise<void> {
  * Validate and get connection ID from session ID
  * Returns null if session is invalid or connection is disconnected
  */
+/**
+ * Update last activity time for a connection session
+ */
+function updateSessionActivity(sessionId: string): void {
+  const session = connectionSessions.get(sessionId);
+  if (session) {
+    session.lastActivityAt = Date.now();
+  }
+}
+
+/**
+ * Check connection session status without updating activity time
+ * Used for health checks that shouldn't reset the idle timer
+ */
+export function checkConnectionSession(sessionId: string): number | null {
+  const session = connectionSessions.get(sessionId);
+  if (!session) {
+    return null;
+  }
+
+  const connectionId = session.connectionId;
+  const pool = connectionPools.get(connectionId);
+
+  // Check if pool still exists
+  if (!pool) {
+    return null;
+  }
+
+  // For SQL Server, check if pool is connected
+  if (pool instanceof sql.ConnectionPool && !pool.connected) {
+    return null;
+  }
+
+  // Return connectionId without updating lastActivityAt
+  return connectionId;
+}
+
+/**
+ * Validate and get connection ID from session ID
+ * Returns null if session is invalid or connection is disconnected
+ * Also updates last activity time (use this for actual user requests)
+ */
 export async function validateConnectionSession(sessionId: string): Promise<number | null> {
   const session = connectionSessions.get(sessionId);
   if (!session) {
@@ -953,6 +1002,9 @@ export async function validateConnectionSession(sessionId: string): Promise<numb
     connectionPools.delete(connectionId);
     return null;
   }
+
+  // Update last activity time
+  updateSessionActivity(sessionId);
 
   return connectionId;
 }
@@ -1184,9 +1236,130 @@ export async function disconnectSession(connectionSessionId: string): Promise<vo
 }
 
 /**
+ * Keep database connections alive by executing simple queries
+ * This prevents connection timeouts but doesn't update lastActivityAt
+ * 
+ * Note: This function only checks sessions that are still in connectionSessions.
+ * When a session is disconnected via disconnectSession(), it is removed from
+ * connectionSessions, so it will no longer be checked by this function.
+ */
+async function keepConnectionsAlive(): Promise<void> {
+  // Only iterate over sessions that are still active
+  // Disconnected sessions are removed from connectionSessions by disconnectSession()
+  for (const [sessionId, session] of connectionSessions.entries()) {
+    try {
+      const connection = getConnection(session.connectionId);
+      if (!connection) {
+        continue;
+      }
+
+      const pool = connectionPools.get(session.connectionId);
+      if (!pool) {
+        continue;
+      }
+
+      // Execute a simple query to keep connection alive
+      // This doesn't update lastActivityAt - only user requests do that
+      if (connection.type === "sqlite") {
+        const db = pool as Database.Database;
+        db.prepare("SELECT 1").get();
+      } else if (connection.type === "postgresql") {
+        const pgPool = pool as pg.Pool;
+        await pgPool.query("SELECT 1");
+      } else if (connection.type === "mssql" || connection.type === "sqlserver") {
+        const sqlPool = pool as sql.ConnectionPool;
+        await sqlPool.request().query("SELECT 1");
+      }
+    } catch (error) {
+      // Silently ignore keep-alive errors - connection might be closing
+      // Errors will be caught when user actually tries to use the connection
+    }
+  }
+}
+
+/**
+ * Check for idle connections and disconnect them if idle for more than 10 minutes
+ */
+async function checkIdleConnections(): Promise<void> {
+  const now = Date.now();
+  const idleSessions: string[] = [];
+
+  for (const [sessionId, session] of connectionSessions.entries()) {
+    const idleTime = now - session.lastActivityAt;
+    if (idleTime > IDLE_TIMEOUT_MS) {
+      idleSessions.push(sessionId);
+    }
+  }
+
+  // Don't log routine checks - only log when actually disconnecting sessions
+
+  // Disconnect idle sessions
+  for (const sessionId of idleSessions) {
+    const idleSeconds = Math.round((now - connectionSessions.get(sessionId)!.lastActivityAt) / 1000);
+    logger.info(`[Session Manager] Disconnecting idle session ${sessionId} (idle for ${idleSeconds} seconds)`);
+    try {
+      await disconnectSession(sessionId);
+    } catch (error) {
+      logger.error(`[Session Manager] Error disconnecting idle session ${sessionId}: ${error}`);
+    }
+  }
+}
+
+/**
+ * Start idle connection checker (runs every minute)
+ */
+let idleCheckInterval: NodeJS.Timeout | null = null;
+let keepAliveInterval: NodeJS.Timeout | null = null;
+
+export function startIdleConnectionChecker(): void {
+  if (idleCheckInterval) {
+    return; // Already started
+  }
+
+  // Check interval should be at most half of timeout to ensure accurate detection
+  // For 60 seconds timeout, check every 12 seconds
+  // For 10 minutes timeout, check every 1 minute
+  const CHECK_INTERVAL_MS = Math.min(IDLE_TIMEOUT_MS / 5, 60 * 1000);
+
+  // Check for idle connections at regular intervals
+  idleCheckInterval = setInterval(() => {
+    checkIdleConnections().catch((error) => {
+      logger.error(`[Session Manager] Error in idle connection checker: ${error}`);
+    });
+  }, CHECK_INTERVAL_MS);
+
+  // Keep connections alive every 5 minutes (prevents database connection timeouts)
+  keepAliveInterval = setInterval(() => {
+    keepConnectionsAlive().catch((error) => {
+      logger.error(`[Session Manager] Error in keep-alive: ${error}`);
+    });
+  }, 5 * 60 * 1000); // Every 5 minutes
+
+  logger.info(`[Session Manager] Idle connection checker started (checks every ${CHECK_INTERVAL_MS / 1000} seconds, disconnects after ${IDLE_TIMEOUT_MS / 1000} seconds of inactivity)`);
+  logger.info("[Session Manager] Connection keep-alive started (executes every 5 minutes to prevent connection timeouts)");
+}
+
+/**
+ * Stop idle connection checker and keep-alive
+ */
+export function stopIdleConnectionChecker(): void {
+  if (idleCheckInterval) {
+    clearInterval(idleCheckInterval);
+    idleCheckInterval = null;
+  }
+  if (keepAliveInterval) {
+    clearInterval(keepAliveInterval);
+    keepAliveInterval = null;
+  }
+  logger.info("[Session Manager] Idle connection checker and keep-alive stopped");
+}
+
+/**
  * Close all connections (for shutdown)
  */
 export async function closeAllConnections(): Promise<void> {
+  stopIdleConnectionChecker();
+  
   for (const [id, pool] of connectionPools) {
     try {
       if (pool instanceof Database) {

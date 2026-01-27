@@ -155,6 +155,19 @@ class ApiClient {
     }
   }
 
+  async checkConnectionHealth(sessionId: string): Promise<{ success: boolean; errorCode?: string }> {
+    try {
+      const response = await this.directRequest<{ success: boolean; errorCode?: string }>(
+        "GET",
+        `/dataloom/connections/session/${sessionId}/health`
+      );
+      return { success: response.success, errorCode: response.errorCode };
+    } catch (error: any) {
+      // If health check fails, treat as invalid session
+      return { success: false, errorCode: "INVALID_SESSION" };
+    }
+  }
+
   async disconnectDatabase(id: number): Promise<{ success: boolean }> {
     try {
       const response = await this.request<{ success: boolean }>("POST", `/dataloom/connections/${id}/disconnect`);
@@ -328,6 +341,7 @@ class ApiClient {
       agentProvider?: string;
       model?: string;
     },
+    abortController?: AbortController,
   ): Promise<{
     success: boolean;
     data?: any;
@@ -337,7 +351,10 @@ class ApiClient {
     errorCode?: string;
     sql?: string; // SQL query (included even on error)
   }> {
-    const response = await this.request<any>("POST", "/query", {
+    // Use directRequest instead of request to access error response body
+    // This allows us to extract errorCode from error responses (e.g., INVALID_SESSION)
+    const url = `${API_BASE}/query`;
+    const requestBody = {
       connectionId: connectionId || undefined,
       connectionSessionId: options?.connectionSessionId,
       chatSessionId: options?.chatSessionId,
@@ -345,9 +362,43 @@ class ApiClient {
       agentId: options?.agentId,
       agentProvider: options?.agentProvider,
       model: options?.model,
-    });
-    // Return the full response which includes success, data, explanation, etc.
-    return response;
+    };
+    
+    try {
+      const fetchOptions: RequestInit = {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      };
+      
+      // Add abort signal if provided
+      if (abortController) {
+        fetchOptions.signal = abortController.signal;
+      }
+      
+      const response = await fetch(url, fetchOptions);
+      
+      const json = await response.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
+      
+      // If response is not ok or not successful, return error object with errorCode if present
+      if (!response.ok || !json.success) {
+        return {
+          success: false,
+          error: json.error || `HTTP error: ${response.status}`,
+          errorCode: json.errorCode,
+          sql: json.sql,
+          chatSessionId: json.chatSessionId,
+        };
+      }
+      
+      // Return successful response
+      return json;
+    } catch (error: any) {
+      // For network errors, re-throw to be handled by catch block in sendMessage
+      throw error;
+    }
   }
 
   async executeSQL(

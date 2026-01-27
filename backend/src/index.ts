@@ -12,7 +12,7 @@ import copilotRouter from "./routes/copilot.js";
 import dataloomRouter from "./routes/dataloom.js";
 
 import { initializeDataLoomDb, closeDataLoomDb } from "./services/dataloom/databaseService.js";
-import { closeAllConnections } from "./services/database/connectionManager.js";
+import { closeAllConnections, startIdleConnectionChecker, stopIdleConnectionChecker } from "./services/database/connectionManager.js";
 import { logger } from "./utils/logger.js";
 
 const app = express();
@@ -50,15 +50,23 @@ app.use((req, res, next) => {
   const start = Date.now();
 
   // Log all requests
-  if (["POST", "PUT", "PATCH"].includes(req.method) && Object.keys(req.body).length > 0) {
-    logger.debug(`${req.method} ${req.path} - Request body: ${JSON.stringify(req.body)}`);
-  } else if (req.method === "GET") {
-    logger.debug(`${req.method} ${req.path}`);
+  // Skip logging health check requests at debug level (too frequent)
+  if (!req.path.includes("/health")) {
+    if (["POST", "PUT", "PATCH"].includes(req.method) && Object.keys(req.body).length > 0) {
+      logger.debug(`${req.method} ${req.path} - Request body: ${JSON.stringify(req.body)}`);
+    } else if (req.method === "GET") {
+      logger.debug(`${req.method} ${req.path}`);
+    }
   }
 
   res.on("finish", () => {
     const duration = Date.now() - start;
-    logger.info(`${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
+    // Log health check endpoints at verbose level (too frequent)
+    if (req.path.includes("/health")) {
+      logger.verbose(`${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
+    } else {
+      logger.info(`${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
+    }
   });
   next();
 });
@@ -117,6 +125,9 @@ async function start() {
     initializeDataLoomDb(process.env.DATALOOM_DB_PATH);
     logger.info("DataLoom database initialized");
 
+    // Start idle connection checker
+    startIdleConnectionChecker();
+
     // Start server
     app.listen(PORT, () => {
       logger.info(`DataLoom Backend running on http://localhost:${PORT}`);
@@ -136,6 +147,7 @@ async function start() {
 async function shutdown() {
   logger.info("Shutting down...");
   try {
+    stopIdleConnectionChecker();
     await closeAllConnections();
     closeDataLoomDb();
     logger.info("Cleanup complete");

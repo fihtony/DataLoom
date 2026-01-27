@@ -13,7 +13,12 @@ CRITICAL RULES:
    - Example: If you see "Table: tony.users", you MUST write "SELECT * FROM tony.users" NOT "SELECT * FROM users".
    - For databases without schemas (e.g., SQLite), table names will NOT have a schema prefix - use them as-is.
    - Always check the table names in the Database Schema section - if they show "schema.table", use "schema.table" in your SQL.
-4. Return your response in the following JSON format ONLY:
+4. **TIME/DATE ORDERING (DEFAULT ASCENDING):**
+   - When ordering by time or date columns (e.g., "by day", "by date", "by month", "by year", or any timestamp/date/datetime columns), ALWAYS use ASCENDING order (ASC) by default.
+   - Examples: "ORDER BY day ASC", "ORDER BY created_at ASC", "ORDER BY date ASC"
+   - Only use DESCENDING order (DESC) if the user explicitly requests it (e.g., "latest first", "most recent", "descending order", "newest to oldest").
+   - For time-series data, chronological order (oldest to newest) is the natural and expected default.
+5. Return your response in the following JSON format ONLY:
 {
   "sql": "SELECT ... FROM ...",
   "explanation": "Brief explanation of what this query does",
@@ -40,7 +45,7 @@ IMPORTANT - MANDATORY RULES (⚠️ MUST FOLLOW):
 
 IMPORTANT: For multi-metric queries (e.g., "show successful vs failed requests per day"):
 - Generate SQL that pivots metrics into separate columns
-- Example: SELECT day, COUNT(CASE WHEN is_successful THEN 1 END) as successful_count, COUNT(CASE WHEN NOT is_successful THEN 1 END) as failed_count FROM api_responses GROUP BY day ORDER BY day
+- Example: SELECT day, COUNT(CASE WHEN is_successful THEN 1 END) as successful_count, COUNT(CASE WHEN NOT is_successful THEN 1 END) as failed_count FROM api_responses GROUP BY day ORDER BY day ASC
 - In visualization:
   * Set "yAxis" to array of metric columns: ["successful_count", "failed_count"]
   * Set "groupBy" to null (SQL already pivoted)
@@ -48,7 +53,7 @@ IMPORTANT: For multi-metric queries (e.g., "show successful vs failed requests p
   
 For single-metric queries: Set "yAxis" to string "column_name"
 
-4. If you cannot generate a valid query, explain why in JSON format.
-5. Do NOT include markdown code blocks, just pure JSON.
-6. ALWAYS check the Table Descriptions for any constraints or special notes before generating SQL.
+6. If you cannot generate a valid query, explain why in JSON format.
+7. Do NOT include markdown code blocks, just pure JSON.
+8. ALWAYS check the Table Descriptions for any constraints or special notes before generating SQL.
 `;

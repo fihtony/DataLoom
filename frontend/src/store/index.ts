@@ -35,6 +35,8 @@ interface AppState {
   // Chat
   messages: ChatMessage[];
   loadingChat: boolean;
+  showConnectionLostDialog: boolean; // Flag to trigger connection lost dialog immediately
+  currentQueryAbortController: AbortController | null; // Track current query for cancellation
 
   // UI
   sidebarOpen: boolean;
@@ -54,7 +56,7 @@ interface AppState {
   connectDatabase: (
     id: number,
   ) => Promise<{ success: boolean; latencyMs?: number; sessionId?: string; readOnlyStatus?: "readonly" | "readwrite" | "unknown" }>;
-  disconnectDatabase: (sessionId: string) => Promise<{ success: boolean }>; // NEW: Use sessionId
+  disconnectDatabase: (sessionId: string, preserveMessages?: boolean) => Promise<{ success: boolean }>; // NEW: Use sessionId, optionally preserve messages
   testConnection: (id: number) => Promise<{ success: boolean; latencyMs?: number }>;
   resetChatSession: () => void; // NEW: Reset chat session and messages
 
@@ -71,6 +73,7 @@ interface AppState {
   sendMessage: (content: string) => Promise<void>;
   executeSQLDirectly: (sql: string) => Promise<QueryResult | null>;
   clearMessages: () => void;
+  addSystemMessage: (content: string) => void; // Add system message (e.g., connection lost)
   clearChatHistory: () => Promise<{ success: boolean; isNewSession: boolean }>; // Clear chat and reset backend session
 
   // UI Actions
@@ -96,6 +99,8 @@ export const useStore = create<AppState>((set, get) => ({
   loadingAgents: false,
   messages: [],
   loadingChat: false,
+  currentQueryAbortController: null,
+  showConnectionLostDialog: false,
   sidebarOpen: true,
 
   // Menu Actions
@@ -199,15 +204,24 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  disconnectDatabase: async (sessionId) => {
+  disconnectDatabase: async (sessionId, preserveMessages = false) => {
     try {
       const result = await api.disconnectDatabaseSession(sessionId);
-      if (result.success) {
+      // Clear state, but optionally preserve messages (for connection loss scenarios)
+      if (preserveMessages) {
+        set({ connectionSessionId: null, chatSessionId: null, readOnlyStatus: null });
+      } else {
         set({ connectionSessionId: null, chatSessionId: null, readOnlyStatus: null, messages: [] });
       }
       return result;
     } catch (error) {
+      // Even on error, clear the state (session might be invalid on backend)
       console.error("Failed to disconnect database:", error);
+      if (preserveMessages) {
+        set({ connectionSessionId: null, chatSessionId: null, readOnlyStatus: null });
+      } else {
+        set({ connectionSessionId: null, chatSessionId: null, readOnlyStatus: null, messages: [] });
+      }
       return { success: false };
     }
   },
@@ -369,9 +383,18 @@ export const useStore = create<AppState>((set, get) => ({
       isLoading: true,
     };
 
+    // Cancel any ongoing query before starting a new one
+    const previousAbortController = get().currentQueryAbortController;
+    if (previousAbortController) {
+      previousAbortController.abort();
+    }
+
+    // Create new AbortController for this query
+    const abortController = new AbortController();
+    set({ currentQueryAbortController: abortController, loadingChat: true });
+
     set((state) => ({
       messages: [...state.messages, userMessage, preparingMessage],
-      loadingChat: true,
     }));
 
     try {
@@ -391,7 +414,7 @@ export const useStore = create<AppState>((set, get) => ({
         agentId: selectedAgent.id,
         agentProvider: selectedAgent.provider,
         model: modelToUse,
-      });
+      }, abortController);
 
       // Update chat session ID if we got a new one (first question)
       if (result.chatSessionId && result.chatSessionId !== chatSessionId) {
@@ -437,6 +460,41 @@ export const useStore = create<AppState>((set, get) => ({
           messages: [...state.messages, assistantMessage],
         }));
       } else {
+        // Check for session invalidation error
+        if ((result as any).errorCode === "INVALID_SESSION") {
+          // Connection session has been lost - clear connection state
+          // IMPORTANT: Do NOT clear messages (chat history) - user should be able to see previous conversation
+          console.warn("[Store] Connection session invalidated, clearing connection state (preserving chat history)");
+          
+          // Use a single set() call to ensure atomic state update
+          // This ensures all state changes happen together and trigger re-render
+          // IMPORTANT: Don't add system message here - let ChatPage handle it via showConnectionLostDialog flag
+          // This prevents duplicate messages when multiple mechanisms trigger (store, handleConnectionLost, useLayoutEffect)
+          set({
+            connectionSessionId: null,
+            chatSessionId: null,
+            readOnlyStatus: null,
+            showConnectionLostDialog: true, // Trigger dialog immediately - ChatPage will add system message
+            // Note: hasActiveConnection is managed in ChatPage, but clearing connectionSessionId
+            // will cause the health check useEffect to stop (it checks !connectionSessionId)
+          });
+          
+          // Also dispatch a custom event as a backup mechanism to ensure immediate response
+          // This bypasses React's render cycle and Zustand's subscription mechanism
+          if (typeof window !== "undefined") {
+            try {
+              const event = new CustomEvent("connectionLost", { detail: { reason: "INVALID_SESSION" } });
+              window.dispatchEvent(event);
+              console.log("[Store] Dispatched 'connectionLost' custom event");
+            } catch (error) {
+              console.error("[Store] Failed to dispatch custom event:", error);
+            }
+          }
+          
+          // Return early - don't add another error message below
+          return;
+        }
+
         // Error response
         assistantContent = `⚠️ ${result.error || "Query failed"}`;
 
@@ -465,6 +523,17 @@ export const useStore = create<AppState>((set, get) => ({
         }));
       }
     } catch (error) {
+      // Don't show error if query was aborted (user disconnected)
+      if (error instanceof Error && error.name === "AbortError") {
+        // Query was cancelled - just remove preparing message and clear loading state
+        set((state) => ({
+          messages: state.messages.filter((m) => m.id !== preparingMessage.id),
+          loadingChat: false,
+          currentQueryAbortController: null,
+        }));
+        return;
+      }
+
       // Remove the preparing message
       set((state) => ({
         messages: state.messages.filter((m) => m.id !== preparingMessage.id),
@@ -480,7 +549,11 @@ export const useStore = create<AppState>((set, get) => ({
         messages: [...state.messages, errorMessage],
       }));
     } finally {
-      set({ loadingChat: false });
+      // Only clear loading state if query wasn't aborted
+      const currentController = get().currentQueryAbortController;
+      if (currentController === abortController) {
+        set({ loadingChat: false, currentQueryAbortController: null });
+      }
     }
   },
 
@@ -503,6 +576,18 @@ export const useStore = create<AppState>((set, get) => ({
 
   clearMessages: () => {
     set({ messages: [] });
+  },
+
+  addSystemMessage: (content: string) => {
+    const systemMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "system",
+      content,
+      timestamp: new Date().toISOString(),
+    };
+    set((state) => ({
+      messages: [...state.messages, systemMessage],
+    }));
   },
 
   clearChatHistory: async () => {

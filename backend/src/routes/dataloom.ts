@@ -11,6 +11,7 @@ import {
   createReadOnlyConnection,
   initializeConnection,
   validateConnectionSession,
+  checkConnectionSession,
   createChatSession,
   validateChatSession,
   markChatSessionAsFollowUp,
@@ -295,6 +296,32 @@ router.post("/connections/session/:sessionId/disconnect", async (req: Request, r
     res.json({ success: true, message: "Connection session disconnected" });
   } catch (error: any) {
     logger.error(`Error disconnecting session ${req.params.sessionId}: ${error.message}`);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Health check for connection session - checks status without updating activity time
+// This is called by frontend to check connection status, but doesn't reset idle timer
+router.get("/connections/session/:sessionId/health", async (req: Request, res: Response) => {
+  try {
+    const sessionId = req.params.sessionId;
+    // Use checkConnectionSession (not validateConnectionSession) to avoid updating lastActivityAt
+    const connectionId = checkConnectionSession(sessionId);
+    
+    if (connectionId === null) {
+      logger.warn(`Connection session ${sessionId} is invalid or disconnected`);
+      return res.status(400).json({
+        success: false,
+        error: "Invalid or disconnected connection session",
+        errorCode: "INVALID_SESSION",
+      });
+    }
+
+    // Don't log successful health checks - too frequent (every 30 seconds per connection)
+    // Only log errors
+    res.json({ success: true, message: "Connection session is valid" });
+  } catch (error: any) {
+    logger.error(`Error checking connection health: ${error.message}`);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -724,12 +751,15 @@ router.get("/connections/:id/analyze/status/:sessionId", (req: Request, res: Res
     const progress = analysisProgressMap.get(sessionKey);
 
     if (!progress) {
-      // Session doesn't exist or already completed
+      // Session doesn't exist or already completed - don't log (too frequent)
       return res.json({
         found: false,
         message: "Analysis session not found or already completed",
       });
     }
+
+    // Don't log progress checks - too frequent (polled every few seconds during analysis)
+    // Only log phase transitions and errors
 
     res.json({
       found: true,
