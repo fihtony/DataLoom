@@ -26,7 +26,6 @@ import {
   Button,
 } from "@mui/material";
 import {
-  Storage as LogoIcon,
   Chat as ChatIcon,
   Storage as DatabaseIcon,
   Settings as SettingsIcon,
@@ -86,7 +85,7 @@ const menuItems: { id: MenuType; label: string; icon: React.ReactNode }[] = [
   { id: "database", label: "Manage Database", icon: <DatabaseIcon /> },
   { id: "settings", label: "Agent Settings", icon: <SettingsIcon /> },
   { id: "knowledgebase", label: "Knowledge Base", icon: <KnowledgeBaseIcon /> },
-  { id: "development", label: "Development", icon: <CodeIcon /> },
+  // { id: "development", label: "Development", icon: <CodeIcon /> },
 ];
 
 function App() {
@@ -161,7 +160,17 @@ function App() {
             >
               {sidebarOpen ? <ChevronLeftIcon /> : <MenuIcon />}
             </IconButton>
-            <LogoIcon sx={{ mr: 1 }} />
+            <Box
+              component="img"
+              src="/icon.png"
+              alt="DataLoom"
+              sx={{
+                width: 32,
+                height: 32,
+                mr: 1, mb: 0.5,
+                objectFit: "contain",
+              }}
+            />
             <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
               DataLoom
             </Typography>

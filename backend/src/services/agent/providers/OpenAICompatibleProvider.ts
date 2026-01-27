@@ -171,7 +171,9 @@ export class OpenAICompatibleProvider implements AgentProvider {
         return [];
       }
 
-      const data = await response.json() as any;
+      const responseText = await response.text();
+
+      const data = JSON.parse(responseText) as any;
 
       // Handle different API response formats
       if (data.data && Array.isArray(data.data)) {
@@ -289,7 +291,9 @@ export class OpenAICompatibleProvider implements AgentProvider {
         };
       }
 
-      const data = await response.json() as any;
+      const responseText = await response.text();
+      
+      const data = JSON.parse(responseText) as any;
 
       // Extract response from OpenAI format
       const content = data.choices?.[0]?.message?.content || data.response;

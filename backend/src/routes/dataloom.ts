@@ -85,6 +85,160 @@ interface AnalysisProgress {
   cancelled: boolean;
 }
 
+/**
+ * Extract JSON from AI response, handling various formats:
+ * - Markdown code blocks: ```json ... ``` or ``` ... ```
+ * - Incomplete code blocks: ```json ... (without closing ```)
+ * - Pure JSON: { ... }
+ * - Multiple code blocks (takes the largest one)
+ */
+function extractJSONFromResponse(response: string): string {
+  let jsonString = response.trim();
+  
+  // Step 1: Try to find complete code blocks first
+  const completePatterns = [
+    /```json\s*([\s\S]*?)```/g,  // ```json ... ``` (complete)
+    /```\s*([\s\S]*?)```/g,       // ``` ... ``` (complete)
+  ];
+  
+  let bestMatch: { content: string; length: number } | null = null;
+  
+  for (const pattern of completePatterns) {
+    const matches = [...jsonString.matchAll(pattern)];
+    for (const match of matches) {
+      const content = match[1].trim();
+      if (content.length > 0 && (content.startsWith("{") || content.startsWith("["))) {
+        if (!bestMatch || content.length > bestMatch.length) {
+          bestMatch = { content, length: content.length };
+        }
+      }
+    }
+  }
+  
+  // Step 2: If no complete code blocks, try incomplete ones (no closing ```)
+  if (!bestMatch) {
+    // Check if response contains ```json or ``` marker
+    const jsonMarkerIndex = jsonString.indexOf("```json");
+    const codeMarkerIndex = jsonString.indexOf("```");
+    
+    if (jsonMarkerIndex !== -1 || codeMarkerIndex !== -1) {
+      // Find the marker position (prefer ```json over ```)
+      const markerIndex = jsonMarkerIndex !== -1 ? jsonMarkerIndex : codeMarkerIndex;
+      const markerLength = jsonMarkerIndex !== -1 ? 7 : 3; // "```json" = 7, "```" = 3
+      const markerEnd = markerIndex + markerLength;
+      
+      // Find JSON start after the marker (skip whitespace/newlines)
+      const afterMarker = jsonString.substring(markerEnd);
+      const jsonStartInAfter = afterMarker.search(/[{[]/); // Find first { or [
+      
+      if (jsonStartInAfter !== -1) {
+        const jsonStart = markerEnd + jsonStartInAfter;
+        const firstChar = jsonString[jsonStart];
+        
+        if (firstChar === "{") {
+          // Extract object - try to find matching closing brace
+          let braceCount = 0;
+          let lastBrace = -1;
+          for (let i = jsonStart; i < jsonString.length; i++) {
+            if (jsonString[i] === "{") braceCount++;
+            if (jsonString[i] === "}") {
+              braceCount--;
+              if (braceCount === 0) {
+                lastBrace = i;
+                break;
+              }
+            }
+          }
+          if (lastBrace !== -1) {
+            return jsonString.substring(jsonStart, lastBrace + 1);
+          } else {
+            // JSON is truncated - return what we have
+            logger.warn(`[extractJSONFromResponse] JSON appears truncated, no matching closing brace found. Returning partial JSON from index ${jsonStart}.`);
+            return jsonString.substring(jsonStart);
+          }
+        } else if (firstChar === "[") {
+          // Extract array
+          let bracketCount = 0;
+          let lastBracket = -1;
+          for (let i = jsonStart; i < jsonString.length; i++) {
+            if (jsonString[i] === "[") bracketCount++;
+            if (jsonString[i] === "]") {
+              bracketCount--;
+              if (bracketCount === 0) {
+                lastBracket = i;
+                break;
+              }
+            }
+          }
+          if (lastBracket !== -1) {
+            return jsonString.substring(jsonStart, lastBracket + 1);
+          } else {
+            logger.warn(`[extractJSONFromResponse] JSON array appears truncated, no matching closing bracket found. Returning partial array from index ${jsonStart}.`);
+            return jsonString.substring(jsonStart);
+          }
+        }
+      }
+    }
+  }
+  
+  if (bestMatch) {
+    return bestMatch.content;
+  }
+  
+  // Step 3: If no code blocks found, try to extract JSON object/array boundaries
+  // This handles cases where the response is pure JSON or has extra text
+  const firstBrace = jsonString.indexOf("{");
+  const firstBracket = jsonString.indexOf("[");
+  
+  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+    // Extract object - find matching closing brace using bracket counting
+    let braceCount = 0;
+    let lastBrace = -1;
+    for (let i = firstBrace; i < jsonString.length; i++) {
+      if (jsonString[i] === "{") braceCount++;
+      if (jsonString[i] === "}") {
+        braceCount--;
+        if (braceCount === 0) {
+          lastBrace = i;
+          break;
+        }
+      }
+    }
+    
+    if (lastBrace !== -1 && lastBrace > firstBrace) {
+      return jsonString.substring(firstBrace, lastBrace + 1);
+    } else if (firstBrace !== -1) {
+      // Truncated JSON - return what we have
+      logger.warn(`[extractJSONFromResponse] JSON appears truncated, returning partial JSON`);
+      return jsonString.substring(firstBrace);
+    }
+  } else if (firstBracket !== -1) {
+    // Extract array - find matching closing bracket using bracket counting
+    let bracketCount = 0;
+    let lastBracket = -1;
+    for (let i = firstBracket; i < jsonString.length; i++) {
+      if (jsonString[i] === "[") bracketCount++;
+      if (jsonString[i] === "]") {
+        bracketCount--;
+        if (bracketCount === 0) {
+          lastBracket = i;
+          break;
+        }
+      }
+    }
+    
+    if (lastBracket !== -1 && lastBracket > firstBracket) {
+      return jsonString.substring(firstBracket, lastBracket + 1);
+    } else if (firstBracket !== -1) {
+      logger.warn(`[extractJSONFromResponse] JSON array appears truncated, returning partial array`);
+      return jsonString.substring(firstBracket);
+    }
+  }
+  
+  // Return original string if no pattern matched
+  return jsonString;
+}
+
 // Map to track analysis progress by sessionKey
 const analysisProgressMap = new Map<string, AnalysisProgress>();
 
@@ -519,10 +673,7 @@ router.post("/connections/:id/analyze", async (req: Request, res: Response) => {
 
         if (retryResponse.success && retryResponse.response) {
           let jsonString = retryResponse.response;
-          const jsonMatch = retryResponse.response.match(/```(?:json)?\s*([\s\S]*?)```/);
-          if (jsonMatch) {
-            jsonString = jsonMatch[1].trim();
-          }
+          jsonString = extractJSONFromResponse(retryResponse.response);
           const retryResult = JSON.parse(jsonString);
           logger.info(`[ANALYZE-FALLBACK] Simplified analysis succeeded with ${retryResult.tableExplanations.length} tables`);
 
@@ -551,11 +702,7 @@ router.post("/connections/:id/analyze", async (req: Request, res: Response) => {
     // Parse Phase 1 response
     let phase1Result: AnalysisResult;
     try {
-      let jsonString = phase1Response.response;
-      const jsonMatch = phase1Response.response.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (jsonMatch) {
-        jsonString = jsonMatch[1].trim();
-      }
+      const jsonString = extractJSONFromResponse(phase1Response.response);
       phase1Result = JSON.parse(jsonString);
       logger.info(
         `[ANALYZE-PHASE1] Phase 1 succeeded - Tables: ${phase1Result.tableExplanations.length}, ` +
@@ -613,11 +760,25 @@ router.post("/connections/:id/analyze", async (req: Request, res: Response) => {
       } else {
         // Parse Phase 2 response
         try {
-          let jsonString = phase2Response.response;
-          const jsonMatch = phase2Response.response.match(/```(?:json)?\s*([\s\S]*?)```/);
+          let jsonString = phase2Response.response.trim();
+          
+          // Try to extract JSON from markdown code blocks (handle multiple formats)
+          let jsonMatch = jsonString.match(/```json\s*([\s\S]*?)```/);
+          if (!jsonMatch) {
+            jsonMatch = jsonString.match(/```\s*([\s\S]*?)```/);
+          }
           if (jsonMatch) {
             jsonString = jsonMatch[1].trim();
+          } else {
+            // Look for JSON object boundaries { ... }
+            const firstBrace = jsonString.indexOf("{");
+            const lastBrace = jsonString.lastIndexOf("}");
+            if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+              jsonString = jsonString.substring(firstBrace, lastBrace + 1);
+            }
           }
+          
+          jsonString = jsonString.trim();
           phase2Result = JSON.parse(jsonString);
           logger.info(
             `[ANALYZE-PHASE2] Phase 2 succeeded - Tables: ${phase2Result.tableExplanations.length}, ` +
@@ -678,11 +839,7 @@ router.post("/connections/:id/analyze", async (req: Request, res: Response) => {
       } else {
         // Parse Phase 3 response
         try {
-          let jsonString = phase3Response.response;
-          const jsonMatch = phase3Response.response.match(/```(?:json)?\s*([\s\S]*?)```/);
-          if (jsonMatch) {
-            jsonString = jsonMatch[1].trim();
-          }
+          const jsonString = extractJSONFromResponse(phase3Response.response);
           finalAnalysisResult = JSON.parse(jsonString);
           logger.info(
             `[ANALYZE-PHASE3] Phase 3 succeeded - Tables: ${finalAnalysisResult.tableExplanations.length}, ` +
