@@ -58,6 +58,13 @@ const PROVIDER_CONFIG: Record<string, ProviderParams> = {
     frequencyPenalty: false,
     presencePenalty: false,
   },
+  gemini: {
+    temperature: true,
+    maxTokens: true,
+    topP: true,
+    frequencyPenalty: false,
+    presencePenalty: false,
+  },
   custom: {
     temperature: true,
     maxTokens: true,
@@ -98,6 +105,8 @@ export class OpenAICompatibleProvider implements AgentProvider {
         "Content-Type": "application/json",
       };
 
+      // Google Gemini OpenAI-compatible endpoint uses Authorization Bearer header
+      // The base URL should be: https://generativelanguage.googleapis.com/v1beta/openai
       if (agent.api_key) {
         headers["Authorization"] = `Bearer ${agent.api_key}`;
       }
@@ -141,10 +150,13 @@ export class OpenAICompatibleProvider implements AgentProvider {
         "Content-Type": "application/json",
       };
 
+      // Google Gemini OpenAI-compatible endpoint uses Authorization Bearer header
+      // The base URL should be: https://generativelanguage.googleapis.com/v1beta/openai
       if (agent.api_key) {
         headers["Authorization"] = `Bearer ${agent.api_key}`;
       }
 
+      logger.debug(`[${this.providerId}Provider] Fetching models from ${modelsUrl}`);
       const response = await fetch(modelsUrl, {
         method: "GET",
         headers,
@@ -152,11 +164,14 @@ export class OpenAICompatibleProvider implements AgentProvider {
       });
 
       if (!response.ok) {
-        logger.warn(`[${this.providerId}Provider] /models returned ${response.status}`);
+        const errorText = await response.text();
+        logger.warn(`[${this.providerId}Provider] /models returned ${response.status}: ${errorText}`);
+        // Log headers for debugging (without sensitive data)
+        logger.debug(`[${this.providerId}Provider] Request headers: ${JSON.stringify(Object.keys(headers))}`);
         return [];
       }
 
-      const data = await response.json();
+      const data = await response.json() as any;
 
       // Handle different API response formats
       if (data.data && Array.isArray(data.data)) {
@@ -204,6 +219,8 @@ export class OpenAICompatibleProvider implements AgentProvider {
         "Content-Type": "application/json",
       };
 
+      // Google Gemini OpenAI-compatible endpoint uses Authorization Bearer header
+      // The base URL should be: https://generativelanguage.googleapis.com/v1beta/openai
       if (agent.api_key) {
         headers["Authorization"] = `Bearer ${agent.api_key}`;
       }
@@ -272,7 +289,7 @@ export class OpenAICompatibleProvider implements AgentProvider {
         };
       }
 
-      const data = await response.json();
+      const data = await response.json() as any;
 
       // Extract response from OpenAI format
       const content = data.choices?.[0]?.message?.content || data.response;

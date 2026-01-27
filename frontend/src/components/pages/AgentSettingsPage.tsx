@@ -157,6 +157,21 @@ const PROVIDERS: ProviderConfig[] = [
     },
   },
   {
+    id: "gemini",
+    name: "Google Gemini",
+    defaultUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    needsApiKey: true,
+    recommendedMaxTokens: 8000,
+    maxOutputTokens: 32768,
+    supportedParams: {
+      temperature: true,
+      max_tokens: true,
+      top_p: true,
+      frequency_penalty: false,
+      presence_penalty: false,
+    },
+  },
+  {
     id: "custom",
     name: "Custom",
     defaultUrl: "",

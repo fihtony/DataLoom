@@ -33,6 +33,7 @@ export class AgentService {
     // Register OpenAI-compatible providers
     this.providers.set("openai", new OpenAICompatibleProvider("openai"));
     this.providers.set("anthropic", new OpenAICompatibleProvider("anthropic"));
+    this.providers.set("gemini", new OpenAICompatibleProvider("gemini"));
     this.providers.set("zhipu", new OpenAICompatibleProvider("zhipu"));
     this.providers.set("azure", new OpenAICompatibleProvider("azure"));
     this.providers.set("ollama", new OpenAICompatibleProvider("ollama"));

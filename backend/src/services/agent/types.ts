@@ -81,4 +81,4 @@ export interface ProviderStatus {
 /**
  * Supported provider types
  */
-export type ProviderType = "copilot" | "openai" | "anthropic" | "zhipu" | "azure" | "ollama" | "custom";
+export type ProviderType = "copilot" | "openai" | "anthropic" | "zhipu" | "azure" | "ollama" | "gemini" | "custom";
