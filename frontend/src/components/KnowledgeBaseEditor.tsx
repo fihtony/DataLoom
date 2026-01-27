@@ -36,6 +36,8 @@ import {
   Edit as EditIcon,
   CloudUpload as CloudUploadIcon,
   Add as AddIcon,
+  FileDownload as ExportIcon,
+  FileUpload as ImportIcon,
 } from "@mui/icons-material";
 import { api } from "../services/api";
 import { TableExplanationsDisplay, ColumnExplanationsDisplay, SqlExamplesDisplay } from "./KnowledgeBaseDisplays";
@@ -114,6 +116,18 @@ export function KnowledgeBaseEditor(props: KnowledgeBaseEditorProps) {
   const [editTarget, setEditTarget] = useState<{ type: "table" | "example" | "column"; data: any; index?: number } | null>(null);
   const [editFormData, setEditFormData] = useState<any>(null);
   const [selectedTabTable, setSelectedTabTable] = useState<string>("");
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importValidation, setImportValidation] = useState<{
+    table_validation: Array<{
+      target: { schema: string | null; table: string } | null;
+      source: { schema: string | null; table: string } | null;
+    }>;
+    column_validation: Array<{
+      target: { schema: string | null; table: string; column: string } | null;
+      source: { schema: string | null; table: string; column: string } | null;
+    }>;
+  } | null>(null);
+  const [pendingImportData, setPendingImportData] = useState<any>(null);
 
   // Tab selection for analysis results display (to avoid conditional hooks)
   const [selectedAnalysisTab, setSelectedAnalysisTab] = useState<string>("");
@@ -131,6 +145,11 @@ export function KnowledgeBaseEditor(props: KnowledgeBaseEditorProps) {
 
   // Load knowledge base on mount or connection change (prevent duplicates)
   useEffect(() => {
+    // Clear notification message when connectionId changes (including when it becomes null)
+    if (connectionId !== currentConnectionIdRef.current) {
+      setTestResult(null);
+    }
+
     if (connectionId && connectionId !== currentConnectionIdRef.current) {
       currentConnectionIdRef.current = connectionId;
       hasLoadedRef.current = false;
@@ -141,6 +160,10 @@ export function KnowledgeBaseEditor(props: KnowledgeBaseEditorProps) {
     if (connectionId && !hasLoadedRef.current) {
       hasLoadedRef.current = true;
       loadKnowledgeBase();
+    } else if (!connectionId) {
+      // Reset when connectionId becomes null
+      currentConnectionIdRef.current = null;
+      hasLoadedRef.current = false;
     }
   }, [connectionId]);
 
@@ -237,6 +260,128 @@ export function KnowledgeBaseEditor(props: KnowledgeBaseEditorProps) {
     // Notify parent component of file changes
     if (onFilesChange) {
       onFilesChange(updatedFiles);
+    }
+  };
+
+  const handleExport = async () => {
+    if (!connectionId) return;
+
+    setLoading(true);
+    try {
+      const exportData = await api.exportKnowledgeBase(connectionId);
+      
+      // Use connection name from export data
+      const dbName = exportData.data.connectionName.replace(/[^a-z0-9]/gi, "_").toLowerCase();
+      
+      // Format timestamp as YYYYMMDD_HHMMSS in local time
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const day = String(now.getDate()).padStart(2, "0");
+      const hours = String(now.getHours()).padStart(2, "0");
+      const minutes = String(now.getMinutes()).padStart(2, "0");
+      const seconds = String(now.getSeconds()).padStart(2, "0");
+      const datetime = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+      const filename = `dataloom_${dbName}_${datetime}.json`;
+
+      // Create blob and download
+      const blob = new Blob([JSON.stringify(exportData.data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setTestResult({
+        success: true,
+        message: `Knowledge base exported successfully as ${filename}`,
+      });
+    } catch (error) {
+      setTestResult({
+        success: false,
+        message: error instanceof Error ? error.message : "Failed to export knowledge base",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleImportClick = () => {
+    document.getElementById("import-kb-file")?.click();
+  };
+
+  const handleImportFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !connectionId) return;
+
+    setLoading(true);
+    try {
+      const text = await file.text();
+      const importData = JSON.parse(text);
+
+      // Validate import data
+      const validation = await api.validateImportData(connectionId, importData);
+
+      // Check if there are any mismatches (target null or source null)
+      const hasTableMismatches = validation.table_validation.some(
+        (item) => item.target === null || item.source === null
+      );
+      const hasColumnMismatches = validation.column_validation.some(
+        (item) => item.target === null || item.source === null
+      );
+
+      if (hasTableMismatches || hasColumnMismatches) {
+        // Show mismatch dialog
+        setImportValidation(validation);
+        setPendingImportData(importData);
+        setImportDialogOpen(true);
+      } else {
+        // No mismatches, proceed with import
+        await handleImportConfirm(importData);
+      }
+    } catch (error) {
+      setTestResult({
+        success: false,
+        message: error instanceof Error ? error.message : "Failed to import knowledge base",
+      });
+    } finally {
+      setLoading(false);
+      // Reset file input
+      e.target.value = "";
+    }
+  };
+
+  const handleImportConfirm = async (importData?: any) => {
+    if (!connectionId) return;
+
+    const dataToImport = importData || pendingImportData;
+    if (!dataToImport) return;
+
+    setLoading(true);
+    try {
+      const result = await api.importKnowledgeBase(connectionId, dataToImport);
+      
+      setTestResult({
+        success: true,
+        message: `Knowledge base imported successfully. Saved: ${result.stats.saved.tables} tables, ${result.stats.saved.columns} columns, ${result.stats.saved.examples} examples. Updated: ${result.stats.updated.tables} tables, ${result.stats.updated.columns} columns, ${result.stats.updated.examples} examples.`,
+      });
+
+      // Reload knowledge base
+      await loadKnowledgeBase();
+      
+      setImportDialogOpen(false);
+      setImportValidation(null);
+      setPendingImportData(null);
+    } catch (error) {
+      setTestResult({
+        success: false,
+        message: error instanceof Error ? error.message : "Failed to import knowledge base",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -625,14 +770,45 @@ export function KnowledgeBaseEditor(props: KnowledgeBaseEditorProps) {
 
       {/* File Upload Section */}
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-        <Typography variant="subtitle2" sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          Documentation Files
-          <Tooltip title="Upload documentation files to provide context for analysis" arrow>
-            <IconButton size="small">
-              <CloudUploadIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        </Typography>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <Typography variant="subtitle2" sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            Documentation Files
+            <Tooltip title="Upload documentation files to provide context for analysis" arrow>
+              <IconButton size="small">
+                <CloudUploadIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Typography>
+          {connectionId && (
+            <Box sx={{ display: "flex", gap: 1 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<ExportIcon />}
+                onClick={handleExport}
+                disabled={loading}
+              >
+                Export
+              </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<ImportIcon />}
+                onClick={handleImportClick}
+                disabled={loading}
+              >
+                Import
+              </Button>
+              <input
+                type="file"
+                id="import-kb-file"
+                accept=".json"
+                style={{ display: "none" }}
+                onChange={handleImportFileSelect}
+              />
+            </Box>
+          )}
+        </Box>
 
         <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
           <input
@@ -1133,6 +1309,192 @@ export function KnowledgeBaseEditor(props: KnowledgeBaseEditorProps) {
           <Button onClick={() => setEditDialogOpen(false)}>Cancel</Button>
           <Button variant="contained" onClick={handleSaveEdit}>
             Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Import Mismatch Dialog */}
+      <Dialog open={importDialogOpen} onClose={() => setImportDialogOpen(false)} maxWidth="lg" fullWidth>
+        <DialogTitle>Import Validation</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Comparing import file with target database. Items marked in red indicate mismatches.
+          </Alert>
+          
+          {importValidation && (
+            <>
+              {/* Table Validation Section */}
+              <Typography variant="h6" sx={{ mt: 2, mb: 1, fontWeight: "bold" }}>
+                Table Validation
+              </Typography>
+              <TableContainer sx={{ maxHeight: 300, mb: 3, border: "1px solid #e0e0e0", borderRadius: 1 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: "bold", backgroundColor: "#f5f5f5" }}>Status</TableCell>
+                      <TableCell sx={{ fontWeight: "bold", backgroundColor: "#f5f5f5" }}>Target Database</TableCell>
+                      <TableCell sx={{ fontWeight: "bold", backgroundColor: "#f5f5f5" }}>Import File</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {importValidation.table_validation.map((item, idx) => {
+                      const isMatch = item.target !== null && item.source !== null;
+                      const targetOnly = item.target !== null && item.source === null;
+                      const sourceOnly = item.target === null && item.source !== null;
+                      
+                      return (
+                        <TableRow 
+                          key={idx}
+                          sx={{
+                            backgroundColor: isMatch ? "#f1f8e9" : targetOnly ? "#fff3e0" : sourceOnly ? "#ffebee" : "inherit",
+                          }}
+                        >
+                          <TableCell>
+                            {isMatch ? (
+                              <Chip label="Match" color="success" size="small" />
+                            ) : targetOnly ? (
+                              <Chip label="Target Only" color="warning" size="small" />
+                            ) : sourceOnly ? (
+                              <Chip label="Import Only" color="error" size="small" />
+                            ) : null}
+                          </TableCell>
+                          <TableCell>
+                            {item.target ? (
+                              <Box>
+                                {item.target.schema && (
+                                  <Typography variant="caption" sx={{ color: "text.secondary", display: "block" }}>
+                                    Schema: <strong>{item.target.schema}</strong>
+                                  </Typography>
+                                )}
+                                <Typography variant="body2">
+                                  Table: <strong>{item.target.table}</strong>
+                                </Typography>
+                              </Box>
+                            ) : (
+                              <Typography variant="body2" sx={{ color: "error.main", fontStyle: "italic" }}>
+                                Not found
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {item.source ? (
+                              <Box>
+                                {item.source.schema && (
+                                  <Typography variant="caption" sx={{ color: "text.secondary", display: "block" }}>
+                                    Schema: <strong>{item.source.schema}</strong>
+                                  </Typography>
+                                )}
+                                <Typography variant="body2">
+                                  Table: <strong>{item.source.table}</strong>
+                                </Typography>
+                              </Box>
+                            ) : (
+                              <Typography variant="body2" sx={{ color: "error.main", fontStyle: "italic" }}>
+                                Not found
+                              </Typography>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              {/* Column Validation Section */}
+              <Typography variant="h6" sx={{ mt: 2, mb: 1, fontWeight: "bold" }}>
+                Column Validation
+              </Typography>
+              <TableContainer sx={{ maxHeight: 300, mb: 2, border: "1px solid #e0e0e0", borderRadius: 1 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: "bold", backgroundColor: "#f5f5f5" }}>Status</TableCell>
+                      <TableCell sx={{ fontWeight: "bold", backgroundColor: "#f5f5f5" }}>Target Database</TableCell>
+                      <TableCell sx={{ fontWeight: "bold", backgroundColor: "#f5f5f5" }}>Import File</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {importValidation.column_validation.map((item, idx) => {
+                      const isMatch = item.target !== null && item.source !== null;
+                      const targetOnly = item.target !== null && item.source === null;
+                      const sourceOnly = item.target === null && item.source !== null;
+                      
+                      return (
+                        <TableRow 
+                          key={idx}
+                          sx={{
+                            backgroundColor: isMatch ? "#f1f8e9" : targetOnly ? "#fff3e0" : sourceOnly ? "#ffebee" : "inherit",
+                          }}
+                        >
+                          <TableCell>
+                            {isMatch ? (
+                              <Chip label="Match" color="success" size="small" />
+                            ) : targetOnly ? (
+                              <Chip label="Target Only" color="warning" size="small" />
+                            ) : sourceOnly ? (
+                              <Chip label="Import Only" color="error" size="small" />
+                            ) : null}
+                          </TableCell>
+                          <TableCell>
+                            {item.target ? (
+                              <Box>
+                                {item.target.schema && (
+                                  <Typography variant="caption" sx={{ color: "text.secondary", display: "block" }}>
+                                    Schema: <strong>{item.target.schema}</strong>
+                                  </Typography>
+                                )}
+                                <Typography variant="caption" sx={{ color: "text.secondary", display: "block" }}>
+                                  Table: <strong>{item.target.table}</strong>
+                                </Typography>
+                                <Typography variant="body2">
+                                  Column: <strong>{item.target.column}</strong>
+                                </Typography>
+                              </Box>
+                            ) : (
+                              <Typography variant="body2" sx={{ color: "error.main", fontStyle: "italic" }}>
+                                Not found
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {item.source ? (
+                              <Box>
+                                {item.source.schema && (
+                                  <Typography variant="caption" sx={{ color: "text.secondary", display: "block" }}>
+                                    Schema: <strong>{item.source.schema}</strong>
+                                  </Typography>
+                                )}
+                                <Typography variant="caption" sx={{ color: "text.secondary", display: "block" }}>
+                                  Table: <strong>{item.source.table}</strong>
+                                </Typography>
+                                <Typography variant="body2">
+                                  Column: <strong>{item.source.column}</strong>
+                                </Typography>
+                              </Box>
+                            ) : (
+                              <Typography variant="body2" sx={{ color: "error.main", fontStyle: "italic" }}>
+                                Not found
+                              </Typography>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </>
+          )}
+          
+          <Typography variant="body2" sx={{ mt: 2, color: "text.secondary" }}>
+            Do you want to proceed with the import? Records with mismatched names will be skipped.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setImportDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => handleImportConfirm()} variant="contained" color="primary">
+            Proceed with Import
           </Button>
         </DialogActions>
       </Dialog>

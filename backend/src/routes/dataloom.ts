@@ -56,7 +56,11 @@ import {
   buildPhase3Prompt,
   saveAnalysisResult,
   clearKnowledgeBase,
+  exportKnowledgeBase,
+  validateImportData,
+  importKnowledgeBase,
   type AnalysisResult,
+  type ExportKnowledgeBaseData,
 } from "../services/dataloom/knowledgeBaseService.js";
 import { agentService, type AIAgentConfig } from "../services/agent/index.js";
 
@@ -1019,6 +1023,68 @@ router.delete("/connections/:id/knowledge-base", (req: Request, res: Response) =
     res.json({ success: true, message: "Knowledge base cleared" });
   } catch (error: any) {
     logger.error(`Error clearing knowledge base: ${error.message}`);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Export knowledge base
+router.get("/connections/:id/knowledge-base/export", (req: Request, res: Response) => {
+  try {
+    const connectionId = parseInt(req.params.id);
+    const connection = getDatabaseConnection(connectionId);
+
+    if (!connection) {
+      return res.status(404).json({ error: "Connection not found" });
+    }
+
+    const exportData = exportKnowledgeBase(connectionId);
+    res.json({ success: true, data: exportData });
+  } catch (error: any) {
+    logger.error(`Error exporting knowledge base: ${error.message}`);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Validate import data
+router.post("/connections/:id/knowledge-base/import/validate", async (req: Request, res: Response) => {
+  try {
+    const connectionId = parseInt(req.params.id);
+    const connection = getDatabaseConnection(connectionId);
+
+    if (!connection) {
+      return res.status(404).json({ error: "Connection not found" });
+    }
+
+    const importData: ExportKnowledgeBaseData = req.body;
+    const validation = await validateImportData(connectionId, importData);
+
+    res.json(validation);
+  } catch (error: any) {
+    logger.error(`Error validating import data: ${error.message}`);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Import knowledge base
+router.post("/connections/:id/knowledge-base/import", (req: Request, res: Response) => {
+  try {
+    const connectionId = parseInt(req.params.id);
+    const connection = getDatabaseConnection(connectionId);
+
+    if (!connection) {
+      return res.status(404).json({ error: "Connection not found" });
+    }
+
+    const importData: ExportKnowledgeBaseData = req.body;
+    const stats = importKnowledgeBase(connectionId, importData);
+
+    res.json({
+      success: true,
+      message: "Knowledge base imported successfully",
+      stats,
+    });
+  } catch (error: any) {
+    logger.error(`Error importing knowledge base: ${error.message}`);
     res.status(500).json({ error: error.message });
   }
 });

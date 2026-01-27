@@ -678,6 +678,42 @@ class ApiClient {
     }>("GET", `/dataloom/connections/${connectionId}/knowledge-base`);
   }
 
+  async exportKnowledgeBase(connectionId: number): Promise<{ success: boolean; data: any }> {
+    return this.directRequest<{ success: boolean; data: any }>("GET", `/dataloom/connections/${connectionId}/knowledge-base/export`);
+  }
+
+  async validateImportData(connectionId: number, importData: any): Promise<{
+    success: boolean;
+    table_validation: Array<{
+      target: { schema: string | null; table: string } | null;
+      source: { schema: string | null; table: string } | null;
+    }>;
+    column_validation: Array<{
+      target: { schema: string | null; table: string; column: string } | null;
+      source: { schema: string | null; table: string; column: string } | null;
+    }>;
+  }> {
+    return this.directRequest<{
+      success: boolean;
+      table_validation: Array<{
+        target: { schema: string | null; table: string } | null;
+        source: { schema: string | null; table: string } | null;
+      }>;
+      column_validation: Array<{
+        target: { schema: string | null; table: string; column: string } | null;
+        source: { schema: string | null; table: string; column: string } | null;
+      }>;
+    }>(
+      "POST",
+      `/dataloom/connections/${connectionId}/knowledge-base/import/validate`,
+      importData,
+    );
+  }
+
+  async importKnowledgeBase(connectionId: number, importData: any): Promise<{ stats: any }> {
+    return this.directRequest<{ stats: any }>("POST", `/dataloom/connections/${connectionId}/knowledge-base/import`, importData);
+  }
+
   async analyzeSchema(
     connectionId: number,
     data: {
