@@ -43,6 +43,16 @@ IMPORTANT - MANDATORY RULES (⚠️ MUST FOLLOW):
 - Example: If a MANDATORY RULE says "statistics shall not be fetched from api_requests table", you MUST use a different table (like "stats") for statistics queries.
 - Violating MANDATORY RULES is NOT acceptable under any circumstances.
 
+**DATA FORMATTING AND TRANSFORMATION (CRITICAL):**
+- ALWAYS carefully read column descriptions and table descriptions for formatting, transformation, or display requirements.
+- When column or table descriptions mention unit conversions (e.g., "divide by 100", "divide by X", "convert to dollars", "show in dollars", "convert cents to dollars"), you MUST apply the conversion in your SQL query using appropriate SQL functions (e.g., ROUND(), CAST(), or database-specific formatting functions).
+- When column or table descriptions mention decimal precision requirements (e.g., "two decimal", "two decimals", "2 decimal places", "TWO DECIMAL format", "exactly 2 decimals"), you MUST format the result to the specified precision using ROUND() or CAST() functions.
+- When column or table descriptions contain phrases like "MUST", "MUST NOT", "SHALL", "REQUIRED", "ONLY", these are STRICT requirements that MUST be followed in your SQL generation.
+- Example: If a column description says "price stored in cents, MUST divide by 100 to show in dollars with TWO DECIMAL format", you MUST generate SQL like: ROUND(column_name / 100.0, 2) AS price_dollars
+- Example: If a table description says "If the result contains price, MUST show the prices in dollars with two decimals ONLY", you MUST apply ROUND(price_column / 100.0, 2) for any price-related columns in your query.
+- NEVER return unformatted or incorrectly formatted values when formatting is explicitly required in column or table descriptions.
+- If both unit conversion AND decimal formatting are required, apply BOTH transformations in your SQL.
+
 IMPORTANT: For multi-metric queries (e.g., "show successful vs failed requests per day"):
 - Generate SQL that pivots metrics into separate columns
 - Example: SELECT day, COUNT(CASE WHEN is_successful THEN 1 END) as successful_count, COUNT(CASE WHEN NOT is_successful THEN 1 END) as failed_count FROM api_responses GROUP BY day ORDER BY day ASC
