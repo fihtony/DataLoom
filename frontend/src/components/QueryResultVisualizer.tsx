@@ -11,6 +11,8 @@ import {
   ShowChart as LineChartIcon,
   Timeline as AreaChartIcon,
   ExpandMore as ExpandMoreIcon,
+  ContentCopy as CopyIcon,
+  CheckCircle as CheckCircleIcon,
 } from "@mui/icons-material";
 import { PieChartComponent } from "./charts/PieChart";
 import { BarChartComponent } from "./charts/BarChart";
@@ -51,6 +53,20 @@ export function QueryResultVisualizer({ result }: QueryResultVisualizerProps) {
   const [viewType, setViewType] = useState<"table" | "bar" | "pie" | "line" | "area">((viz?.type as any) || "table");
   // Expand SQL by default if there's no data (error case) so user can see the query
   const [sqlExpanded, setSqlExpanded] = useState(!result.data || result.data.length === 0);
+  const [copyFeedback, setCopyFeedback] = useState(false);
+
+  const handleCopySql = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (result.sql) {
+      try {
+        await navigator.clipboard.writeText(result.sql);
+        setCopyFeedback(true);
+        setTimeout(() => setCopyFeedback(false), 3000);
+      } catch (err) {
+        console.error("Failed to copy SQL:", err);
+      }
+    }
+  };
 
   // Show error/empty state with SQL if available
   if (!result.data || result.data.length === 0) {
@@ -78,15 +94,35 @@ export function QueryResultVisualizer({ result }: QueryResultVisualizerProps) {
               <Typography variant="caption" sx={{ color: "grey.400", fontSize: "0.7rem" }}>
                 Generated SQL
               </Typography>
-              <IconButton
-                size="small"
-                sx={{
-                  transform: sqlExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                  transition: "transform 0.3s",
-                }}
-              >
-                <ExpandMoreIcon sx={{ fontSize: "1rem", color: "grey.400" }} />
-              </IconButton>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, color: "grey.400" }}>
+                  <IconButton
+                    size="small"
+                    onClick={handleCopySql}
+                    sx={{ color: "grey.400", "&:hover": { color: "grey.200" } }}
+                  >
+                    {copyFeedback ? (
+                      <CheckCircleIcon sx={{ fontSize: "0.9rem" }} />
+                    ) : (
+                      <CopyIcon sx={{ fontSize: "0.9rem" }} />
+                    )}
+                  </IconButton>
+                  {copyFeedback && (
+                    <Typography variant="caption" sx={{ fontSize: "0.7rem", color: "grey.400" }}>
+                      copied
+                    </Typography>
+                  )}
+                </Box>
+                <IconButton
+                  size="small"
+                  sx={{
+                    transform: sqlExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.3s",
+                  }}
+                >
+                  <ExpandMoreIcon sx={{ fontSize: "1rem", color: "grey.400" }} />
+                </IconButton>
+              </Box>
             </Box>
             <Collapse in={sqlExpanded}>
               <Box sx={{ p: 1.5, bgcolor: "grey.900" }}>
@@ -255,15 +291,35 @@ export function QueryResultVisualizer({ result }: QueryResultVisualizerProps) {
             <Typography variant="caption" sx={{ color: "grey.400", fontSize: "0.7rem" }}>
               Generated SQL
             </Typography>
-            <IconButton
-              size="small"
-              sx={{
-                transform: sqlExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                transition: "transform 0.3s",
-              }}
-            >
-              <ExpandMoreIcon sx={{ fontSize: "1rem", color: "grey.400" }} />
-            </IconButton>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, color: "grey.400" }}>
+                <IconButton
+                  size="small"
+                  onClick={handleCopySql}
+                  sx={{ color: "grey.400", "&:hover": { color: "grey.200" } }}
+                >
+                  {copyFeedback ? (
+                    <CheckCircleIcon sx={{ fontSize: "0.9rem" }} />
+                  ) : (
+                    <CopyIcon sx={{ fontSize: "0.9rem" }} />
+                  )}
+                </IconButton>
+                {copyFeedback && (
+                  <Typography variant="caption" sx={{ fontSize: "0.7rem", color: "grey.400" }}>
+                    copied
+                  </Typography>
+                )}
+              </Box>
+              <IconButton
+                size="small"
+                sx={{
+                  transform: sqlExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                  transition: "transform 0.3s",
+                }}
+              >
+                <ExpandMoreIcon sx={{ fontSize: "1rem", color: "grey.400" }} />
+              </IconButton>
+            </Box>
           </Box>
           <Collapse in={sqlExpanded}>
             <Box sx={{ p: 1.5, bgcolor: "grey.900" }}>

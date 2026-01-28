@@ -630,6 +630,7 @@ export function saveAnalysisResult(
 export interface ExportKnowledgeBaseData {
   connectionId: number;
   connectionName: string;
+  databaseType: string;
   exportedAt: string;
   tableExplanations: Array<Omit<TableExplanation, "id" | "database_connection_id"> & { columns?: Array<Omit<ColumnExplanation, "id" | "table_explanation_id">> }>;
   sqlExamples: Array<Omit<SqlExample, "id" | "database_connection_id">>;
@@ -689,6 +690,7 @@ export function exportKnowledgeBase(connectionId: number): ExportKnowledgeBaseDa
   return {
     connectionId,
     connectionName: connection.name,
+    databaseType: connection.type,
     exportedAt: new Date().toISOString(),
     tableExplanations: tableExplanationsWithColumns,
     sqlExamples: sqlExamplesForExport,

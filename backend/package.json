@@ -5,9 +5,9 @@
   "main": "dist/index.js",
   "scripts": {
     "db:init": "tsx src/commands/db-init.ts",
-    "dev": "LOG_LEVEL=debug tsx watch start.ts",
+    "dev": "tsx watch start.ts",
     "build": "tsc",
-    "start": "LOG_LEVEL=debug node dist/start.js",
+    "start": "node dist/start.js",
     "test": "jest --coverage",
     "test:unit": "jest tests/unit --no-coverage",
     "test:integration": "jest tests/integration --no-coverage",
