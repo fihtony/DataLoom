@@ -133,7 +133,7 @@ export class CopilotProvider implements AgentProvider {
       const requestBody: any = {
         sessionId,
         prompt: fullPrompt,
-        model: request.model || agent.model || "gpt-4o",
+        model_id: request.model || agent.model || "gpt-5-mini", // Use model_id field that CopilotBridge expects
         timeout,
       };
 
@@ -222,7 +222,7 @@ export class CopilotProvider implements AgentProvider {
    */
   private getDefaultModels(): AIModel[] {
     return [
-      { id: "gpt-4o", name: "GPT-4o", vendor: "OpenAI" },
+      { id: "gpt-5-mini", name: "GPT-5 Mini", vendor: "OpenAI" },
     ];
   }
 }
