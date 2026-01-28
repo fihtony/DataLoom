@@ -879,11 +879,7 @@ router.post("/connections/:id/analyze", async (req: Request, res: Response) => {
       success: true,
       analysis: finalAnalysisResult,
       message: "Analysis completed. Review the results and click Save to store them.",
-      phases: {
-        phase1: "✓ Table structure analysis completed",
-        phase2: phase2Response?.success ? "✓ Column explanations completed" : "✗ Column explanations failed, using Phase 1 results",
-        phase3: phase3Response?.success ? "✓ SQL examples generated" : "✗ SQL examples failed, using Phase 1+2 results",
-      },
+      phases: analysisProgress.phases,
     });
   } catch (error: any) {
     logger.error(`Error analyzing schema: ${error.message}`);

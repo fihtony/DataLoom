@@ -2,7 +2,7 @@
 // Knowledge Base Page - Manage Knowledge Base Entries
 // =============================================================================
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Box,
   Paper,
@@ -45,9 +45,11 @@ export function KnowledgeBasePage() {
   const [progressDialogOpen, setProgressDialogOpen] = useState(false);
   const [currentPhase, setCurrentPhase] = useState<0 | 1 | 2 | 3 | 4>(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [phaseMessages, setPhaseMessages] = useState<{ phase1: string; phase2: string; phase3: string } | null>(null);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [analysisSessionId, setAnalysisSessionId] = useState<string | null>(null);
   const [cancelledByUser, setCancelledByUser] = useState(false);
+  const resultReceivedRef = useRef(false);
 
   // Load agent models when selected agent changes
   useEffect(() => {
@@ -97,6 +99,8 @@ export function KnowledgeBasePage() {
     setProgressDialogOpen(true);
     setCurrentPhase(0);
     setElapsedSeconds(0);
+    setPhaseMessages(null);
+    resultReceivedRef.current = false;
 
     // Create abort controller for cancellation
     const controller = new AbortController();
@@ -108,7 +112,7 @@ export function KnowledgeBasePage() {
     }, 1000);
 
     // Initialize polling interval variable
-    let pollingInterval: number | null = null;
+    let pollingInterval: ReturnType<typeof setInterval> | null = null;
 
     try {
       // Call analysis with AI, backend will fetch schema and run analysis
@@ -118,19 +122,18 @@ export function KnowledgeBasePage() {
       setCancelledByUser(false);
 
       // Start progress polling
-      console.log("[POLLING] Starting progress polling for analysis...");
+      // console.log("[POLLING] Starting progress polling for analysis...");
       pollingInterval = setInterval(async () => {
+        if (resultReceivedRef.current) return;
         try {
           const status = await api.getAnalysisStatus(selectedConnectionId, sessionId);
+          if (resultReceivedRef.current) return;
           if (status.found) {
-            console.log(`[PROGRESS UPDATE] Phase: ${status.currentPhase}/4, Phases:`, status.phases);
             setCurrentPhase((status.currentPhase || 0) as 0 | 1 | 2 | 3 | 4);
-          } else {
-            // Analysis completed or not found
-            console.log("[POLLING] Analysis session not found or completed");
+            if (status.phases) setPhaseMessages(status.phases);
           }
         } catch (error) {
-          console.warn("[POLLING] Error fetching status:", error);
+          if (!resultReceivedRef.current) console.warn("[POLLING] Error fetching status:", error);
         }
       }, 5000); // Poll every 5 seconds
 
@@ -145,39 +148,24 @@ export function KnowledgeBasePage() {
           sessionId,
         },
         (phase: number) => {
-          console.log(`[CALLBACK] Phase update: ${phase}`);
-          setCurrentPhase(phase as 0 | 1 | 2 | 3 | 4);
+          if (!resultReceivedRef.current) setCurrentPhase(phase as 0 | 1 | 2 | 3 | 4);
         },
         controller,
       );
 
-      // Stop polling
+      // Stop polling immediately so no late poll overwrites result state
       if (pollingInterval) {
         clearInterval(pollingInterval);
-        console.log("[POLLING] Stopped polling - analysis response received");
+        pollingInterval = null;
       }
+      resultReceivedRef.current = true;
 
-      // Update phase based on response phases status
+      // Update phase and phase messages from response (source of truth)
       if (result.phases) {
-        console.log("[RESPONSE] Analysis phases:", result.phases);
-        // Phase 1 completed
-        if (result.phases.phase1.includes("✓")) {
-          console.log("[PHASE UPDATE] Setting phase to 2 (Phase 2 in progress)");
-          setCurrentPhase(2);
-        }
-        // Phase 2 completed
-        if (result.phases.phase2.includes("✓")) {
-          console.log("[PHASE UPDATE] Setting phase to 3 (Phase 3 in progress)");
-          setCurrentPhase(3);
-        }
-        // Phase 3 completed
-        if (result.phases.phase3.includes("✓")) {
-          setCurrentPhase(4);
-        }
+        setPhaseMessages(result.phases);
       }
 
       if (result.success && result.analysis) {
-        console.log("Analysis completed successfully");
         setAnalysisResult(result.analysis);
         setCurrentPhase(4);
         // Auto-close dialog after a short delay to show completion
@@ -239,6 +227,7 @@ export function KnowledgeBasePage() {
     setProgressDialogOpen(false);
     setCurrentPhase(0);
     setElapsedSeconds(0);
+    setPhaseMessages(null);
     setIsAnalyzing(false);
     setAnalysisSessionId(null);
   };
@@ -248,6 +237,7 @@ export function KnowledgeBasePage() {
     setProgressDialogOpen(false);
     setCurrentPhase(0);
     setElapsedSeconds(0);
+    setPhaseMessages(null);
     setAnalysisSessionId(null);
     setCancelledByUser(false);
   };
@@ -469,6 +459,7 @@ export function KnowledgeBasePage() {
         open={progressDialogOpen}
         currentPhase={currentPhase}
         elapsedSeconds={elapsedSeconds}
+        phases={phaseMessages}
         onCancel={handleCancelAnalysis}
       />
     </Box>
