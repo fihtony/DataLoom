@@ -192,7 +192,14 @@ export interface CopilotResponse {
 export interface SQLValidationResult {
   valid: boolean;
   error?: string;
-  errorCode?: "NOT_SELECT" | "FORBIDDEN_KEYWORD" | "INJECTION_DETECTED" | "SYSTEM_TABLE" | "TOO_MANY_JOINS" | "MODIFICATION_NOT_ALLOWED";
+  errorCode?:
+    | "NOT_SELECT"
+    | "FORBIDDEN_KEYWORD"
+    | "FORBIDDEN_KEYWORD_IN_COMBINATION"
+    | "INJECTION_DETECTED"
+    | "SYSTEM_TABLE"
+    | "TOO_MANY_JOINS"
+    | "MODIFICATION_NOT_ALLOWED";
 }
 
 export interface SQLValidationRules {

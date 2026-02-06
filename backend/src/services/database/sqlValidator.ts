@@ -7,6 +7,39 @@
 
 import type { SQLValidationResult, SQLValidationRules } from "../../types/index.js";
 
+// ============================================================================
+// Allowed keyword combinations
+// Each combination specifies which keywords can be used together with SELECT
+// ============================================================================
+interface KeywordCombination {
+  required: string[];
+  forbidden: string[];
+  contextName: string;
+}
+
+export const ALLOWED_KEYWORD_COMBINATIONS: KeywordCombination[] = [
+  {
+    required: ["DECLARE", "SET", "SELECT"],
+    forbidden: ["INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP", "WITH", "RECURSIVE"],
+    contextName: "DECLARE...SET...SELECT",
+  },
+  {
+    required: ["DECLARE", "SELECT"],
+    forbidden: ["INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP", "WITH", "RECURSIVE"],
+    contextName: "DECLARE...SELECT",
+  },
+  {
+    required: ["SET", "SELECT"],
+    forbidden: ["INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP", "WITH", "RECURSIVE"],
+    contextName: "SET...SELECT",
+  },
+  {
+    required: ["WITH", "SELECT"],
+    forbidden: ["INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP", "RECURSIVE"],
+    contextName: "WITH...SELECT",
+  },
+];
+
 // Default validation rules
 export const DEFAULT_VALIDATION_RULES: SQLValidationRules = {
   // ✅ ONLY ALLOWED: SELECT queries
@@ -69,7 +102,7 @@ export const DEFAULT_VALIDATION_RULES: SQLValidationRules = {
     "INTERVAL",
   ],
 
-  // ❌ STRICTLY FORBIDDEN: All data modification operations
+  // ❌ STRICTLY FORBIDDEN: Absolute forbidden keywords (never allowed in ANY context)
   forbiddenKeywords: [
     // Data manipulation
     "INSERT",
@@ -84,14 +117,12 @@ export const DEFAULT_VALIDATION_RULES: SQLValidationRules = {
     "DROP",
     "TRUNCATE",
     "RENAME",
-    // Procedural/execution
+    // Procedural/execution - DECLARE and SET are conditionally allowed
     "EXEC",
     "EXECUTE",
     "CALL",
     "GOTO",
     "LABEL",
-    "DECLARE",
-    "SET",
     // Access control
     "GRANT",
     "REVOKE",
@@ -109,9 +140,6 @@ export const DEFAULT_VALIDATION_RULES: SQLValidationRules = {
     "VACUUM",
     "ANALYZE",
     "REINDEX",
-    // CTE with potential recursion
-    "WITH",
-    "RECURSIVE",
     // Dangerous SQL Server operations
     "BULK",
     "OPENROWSET",
@@ -220,33 +248,37 @@ export class SQLValidator {
   }
 
   private startsWithSelect(sql: string): boolean {
-    // Remove leading whitespace and check for SELECT or WITH (CTE)
-    const trimmed = sql.trim();
-    return trimmed.startsWith("SELECT") || trimmed.startsWith("(SELECT") || trimmed.startsWith("WITH");
+    // Remove leading whitespace
+    const trimmed = sql.trim().toUpperCase();
+
+    // Allow queries that start with:
+    // 1. SELECT - standard select query
+    // 2. (SELECT - subquery
+    // 3. WITH - CTE (Common Table Expression)
+    // 4. DECLARE - variable declaration (must be followed by SELECT)
+    if (
+      trimmed.startsWith("SELECT") ||
+      trimmed.startsWith("(SELECT") ||
+      (trimmed.startsWith("WITH") && sql.toUpperCase().includes("SELECT"))
+    ) {
+      return true;
+    }
+
+    // Allow DECLARE only if followed by SELECT somewhere in the query
+    if (trimmed.startsWith("DECLARE")) {
+      return sql.toUpperCase().includes("SELECT");
+    }
+
+    return false;
   }
 
   private checkForbiddenKeywords(sql: string): SQLValidationResult {
-    // Check for modification operations specifically (CREATE, UPDATE, DELETE, INSERT, etc.)
-    const modificationKeywords = ["INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP"];
-    for (const keyword of modificationKeywords) {
-      const regex = new RegExp(`\\b${keyword}\\b`, "i");
-      if (regex.test(sql)) {
-        return {
-          valid: false,
-          error: `❌ Create/Update/Delete operations are not allowed`,
-          errorCode: "MODIFICATION_NOT_ALLOWED",
-        };
-      }
-    }
+    const upperSQL = sql.toUpperCase();
 
+    // Step 1: Check absolute forbidden keywords (should never appear in any context)
     for (const keyword of this.rules.forbiddenKeywords) {
-      // Use word boundary to avoid false positives (e.g., "UPDATE" in "LAST_UPDATE")
       const regex = new RegExp(`\\b${keyword}\\b`, "i");
       if (regex.test(sql)) {
-        // Special case: Allow WITH for CTEs in read-only context (but not RECURSIVE)
-        if (keyword === "WITH" && !sql.includes("RECURSIVE")) {
-          continue;
-        }
         return {
           valid: false,
           error: `❌ FORBIDDEN: Keyword '${keyword}' is not allowed. Only SELECT queries can be executed.`,
@@ -254,6 +286,30 @@ export class SQLValidator {
         };
       }
     }
+
+    // Step 2: Check allowed keyword combinations
+    // If query matches a combination, validate against that combination's forbidden keywords
+    for (const combination of ALLOWED_KEYWORD_COMBINATIONS) {
+      const hasAllRequired = combination.required.every((kw) => upperSQL.includes(kw));
+
+      if (hasAllRequired) {
+        // This combination applies - validate against its specific forbidden keywords
+        for (const keyword of combination.forbidden) {
+          const regex = new RegExp(`\\b${keyword}\\b`, "i");
+          if (regex.test(sql)) {
+            return {
+              valid: false,
+              error: `❌ FORBIDDEN: Keyword '${keyword}' is not allowed with ${combination.contextName}.`,
+              errorCode: "FORBIDDEN_KEYWORD_IN_COMBINATION",
+            };
+          }
+        }
+        // If we reach here, this combination is valid
+        return { valid: true };
+      }
+    }
+
+    // Step 3: No combination matched - plain SELECT should be valid
     return { valid: true };
   }
 
