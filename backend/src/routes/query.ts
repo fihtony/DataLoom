@@ -184,14 +184,16 @@ const QuerySchema = z.object({
   naturalLanguage: z.string().min(1).max(2000),
   agentId: z.number().optional(), // AI Agent ID
   agentProvider: z.string().optional(), // AI Agent provider type
-  model: z.union([
-    z.object({
-      id: z.string(),
-      name: z.string(),
-      vendor: z.string(),
-    }),
-    z.string(),
-  ]).optional(),
+  model: z
+    .union([
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        vendor: z.string(),
+      }),
+      z.string(),
+    ])
+    .optional(),
 });
 
 const ExecuteSQLSchema = z.object({
@@ -453,6 +455,13 @@ router.post("/", async (req: Request, res: Response) => {
         });
       }
 
+      // Update connection session activity when AI response is received
+      // This resets the idle timeout so user has full time to review and act on results
+      if (connectionSessionId) {
+        connectionManager.updateConnectionSessionActivity(connectionSessionId);
+        logger.debug(`[Query] Updated session activity timestamp after AI response for session ${connectionSessionId}`);
+      }
+
       // Log AI response (first 100 lines for debugging)
       const responseLines = aiResponse.response.split("\n");
       const responsePreview = responseLines.slice(0, 100).join("\n");
@@ -490,7 +499,7 @@ router.post("/", async (req: Request, res: Response) => {
     if (!extractedSQL) {
       // Build a helpful error message with database context
       let errorMsg = "";
-      
+
       if (!providerStatus.available) {
         errorMsg = `Could not generate SQL from natural language. AI provider (${selectedAgent.provider}) is not available: ${providerStatus.error || "Unknown error"}`;
       } else {
@@ -498,17 +507,17 @@ router.post("/", async (req: Request, res: Response) => {
         try {
           // Get user-selected schemas (if any) to filter tables
           const selectedSchemas = getSelectedSchemasFromConnection(connectionId);
-          
+
           // Get schema filtered by user selection
           const schema = await connectionManager.getSchema(connectionId, selectedSchemas);
-          
+
           // Get all table explanations and filter by selected schemas
           const allTableExplanations = getTableExplanationsByConnection(connectionId);
           let tableExplanations = allTableExplanations;
-          
+
           // Filter table explanations by selected schemas (if schemas are selected)
           if (selectedSchemas && selectedSchemas.length > 0) {
-            tableExplanations = allTableExplanations.filter(t => {
+            tableExplanations = allTableExplanations.filter((t) => {
               const tableSchema = (t as any).schema_name;
               // If table has no schema_name, include it (for SQLite or legacy data)
               if (!tableSchema) return true;
@@ -516,61 +525,62 @@ router.post("/", async (req: Request, res: Response) => {
               return selectedSchemas.includes(tableSchema);
             });
           }
-          
+
           // Build database summary
           const tableCount = schema.tables.length;
           const hasTableExplanations = tableExplanations.length > 0;
-          
+
           // Build helpful error message
           const parts: string[] = [];
           parts.push("I couldn't generate a SQL query for your question.");
-          
+
           if (tableCount > 0) {
             // List table names (limit to first 10 for brevity)
-            const tableNames = schema.tables
-              .slice(0, 10)
-              .map(t => {
-                const tableName = (t as any).schema ? `${(t as any).schema}.${t.name}` : t.name;
-                return tableName;
-              });
-            
+            const tableNames = schema.tables.slice(0, 10).map((t) => {
+              const tableName = (t as any).schema ? `${(t as any).schema}.${t.name}` : t.name;
+              return tableName;
+            });
+
             if (tableCount <= 10) {
               parts.push(`This database contains ${tableCount} table${tableCount > 1 ? "s" : ""}: ${tableNames.join(", ")}.`);
             } else {
               parts.push(`This database contains ${tableCount} tables, including: ${tableNames.join(", ")}, and ${tableCount - 10} more.`);
             }
           }
-          
+
           if (hasTableExplanations) {
             // Show table descriptions (limit to first 3 for brevity)
-            const tableDescriptions = tableExplanations
-              .slice(0, 3)
-              .map(t => {
-                const tableName = (t as any).schema_name ? `${(t as any).schema_name}.${t.table_name}` : t.table_name;
-                let desc = `- ${tableName}`;
-                if (t.explanation) {
-                  desc += `: ${t.explanation}`;
-                } else if (t.business_purpose) {
-                  desc += ` (${t.business_purpose})`;
-                }
-                return desc;
-              });
-            
+            const tableDescriptions = tableExplanations.slice(0, 3).map((t) => {
+              const tableName = (t as any).schema_name ? `${(t as any).schema_name}.${t.table_name}` : t.table_name;
+              let desc = `- ${tableName}`;
+              if (t.explanation) {
+                desc += `: ${t.explanation}`;
+              } else if (t.business_purpose) {
+                desc += ` (${t.business_purpose})`;
+              }
+              return desc;
+            });
+
             if (tableDescriptions.length > 0) {
-              parts.push(`\nAvailable data includes:\n${tableDescriptions.join("\n")}${tableExplanations.length > 3 ? `\n... and ${tableExplanations.length - 3} more tables with descriptions` : ""}`);
+              parts.push(
+                `\nAvailable data includes:\n${tableDescriptions.join("\n")}${tableExplanations.length > 3 ? `\n... and ${tableExplanations.length - 3} more tables with descriptions` : ""}`,
+              );
             }
           }
-          
-          parts.push("\nPlease provide more specific details about what you'd like to query, such as which table(s) you're interested in, what information you want to retrieve, or any specific conditions or filters you need.");
-          
+
+          parts.push(
+            "\nPlease provide more specific details about what you'd like to query, such as which table(s) you're interested in, what information you want to retrieve, or any specific conditions or filters you need.",
+          );
+
           errorMsg = parts.join(" ");
         } catch (contextError) {
           // If we can't get context, use a simpler message
           logger.warn(`Failed to build context for NO_SQL_GENERATED error: ${contextError}`);
-          errorMsg = "I couldn't generate a SQL query for your question. Please provide more specific details about what data you'd like to query, including which tables or information you're interested in.";
+          errorMsg =
+            "I couldn't generate a SQL query for your question. Please provide more specific details about what data you'd like to query, including which tables or information you're interested in.";
         }
       }
-      
+
       return res.status(400).json({
         success: false,
         error: errorMsg,
@@ -608,6 +618,13 @@ router.post("/", async (req: Request, res: Response) => {
       rowCount: result.rowCount,
       executionTimeMs: result.executionTimeMs,
     });
+
+    // Update connection session activity after successful query execution
+    // This ensures the session timer resets when query results are delivered
+    if (connectionSessionId) {
+      connectionManager.updateConnectionSessionActivity(connectionSessionId);
+      logger.info(`[Query] Updated session activity timestamp after query execution for session ${connectionSessionId}`);
+    }
 
     // Mark chat session as follow-up for next question
     connectionManager.markChatSessionAsFollowUp(chatSessionId);
@@ -696,6 +713,12 @@ router.post("/execute", async (req: Request, res: Response) => {
         sql,
         timestamp: new Date().toISOString(),
       });
+    }
+
+    // Update connection session activity after successful query execution
+    if (connectionSessionId) {
+      connectionManager.updateConnectionSessionActivity(connectionSessionId);
+      logger.info(`[Query] Updated session activity timestamp after direct SQL execution for session ${connectionSessionId}`);
     }
 
     // Enhance visualization with legend

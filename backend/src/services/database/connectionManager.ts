@@ -17,8 +17,8 @@ import { getDataLoomDb } from "../dataloom/databaseService.js";
 const connectionPools: Map<number, Database.Database | pg.Pool | sql.ConnectionPool> = new Map();
 
 // Idle timeout configuration
-// For testing: 60 seconds, for production: 5 minutes (300 seconds)
-const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes for testing (should be 5 * 60 * 1000 in production)
+// For testing: 60 seconds, for production: 10 minutes (600 seconds)
+const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 // Connection session storage: sessionId -> {connectionId, createdAt, lastActivityAt, schemaCache, kbCache}
 const connectionSessions: Map<
@@ -40,12 +40,15 @@ interface ChatMessage {
 }
 
 // Chat session storage: chatSessionId -> {connectionSessionId, isFollowUp, createdAt, history}
-const chatSessions: Map<string, { 
-  connectionSessionId: string; 
-  isFollowUp: boolean; 
-  createdAt: number;
-  history: ChatMessage[];
-}> = new Map();
+const chatSessions: Map<
+  string,
+  {
+    connectionSessionId: string;
+    isFollowUp: boolean;
+    createdAt: number;
+    history: ChatMessage[];
+  }
+> = new Map();
 
 /**
  * Format column name from snake_case to Title Case
@@ -285,6 +288,21 @@ export async function initializeConnection(
   );
 
   return { sessionId, readOnlyStatus };
+}
+
+/**
+ * Update the last activity timestamp for a connection session
+ * This resets the idle timeout when the user receives AI analysis or executes a query
+ * @param sessionId - Connection session ID
+ */
+export function updateConnectionSessionActivity(sessionId: string): void {
+  const session = connectionSessions.get(sessionId);
+  if (session) {
+    session.lastActivityAt = Date.now();
+    logger.debug(`[Connection Manager] Updated activity timestamp for session ${sessionId}`);
+  } else {
+    logger.warn(`[Connection Manager] Session not found for activity update: ${sessionId}`);
+  }
 }
 
 /**
@@ -1138,7 +1156,9 @@ export function addChatMessage(chatSessionId: string, role: "user" | "assistant"
       content,
       timestamp: Date.now(),
     });
-    logger.debug(`[Chat Session Manager] Added ${role} message to chat session ${chatSessionId}, total messages: ${session.history.length}`);
+    logger.debug(
+      `[Chat Session Manager] Added ${role} message to chat session ${chatSessionId}, total messages: ${session.history.length}`,
+    );
   }
 }
 
@@ -1150,7 +1170,7 @@ export function getChatHistory(chatSessionId: string): Array<{ role: "user" | "a
   const session = chatSessions.get(chatSessionId);
   if (session) {
     // Return messages without timestamp for API compatibility
-    return session.history.map(msg => ({
+    return session.history.map((msg) => ({
       role: msg.role,
       content: msg.content,
     }));
@@ -1188,7 +1208,7 @@ export function resetChatSession(connectionSessionId: string, oldChatSessionId?:
     chatSessions.delete(oldChatSessionId);
     logger.info(`[Chat Session Manager] Deleted old chat session ${oldChatSessionId}`);
   }
-  
+
   // Create new session
   return createChatSession(connectionSessionId);
 }
@@ -1238,7 +1258,7 @@ export async function disconnectSession(connectionSessionId: string): Promise<vo
 /**
  * Keep database connections alive by executing simple queries
  * This prevents connection timeouts but doesn't update lastActivityAt
- * 
+ *
  * Note: This function only checks sessions that are still in connectionSessions.
  * When a session is disconnected via disconnectSession(), it is removed from
  * connectionSessions, so it will no longer be checked by this function.
@@ -1329,13 +1349,18 @@ export function startIdleConnectionChecker(): void {
   }, CHECK_INTERVAL_MS);
 
   // Keep connections alive every 5 minutes (prevents database connection timeouts)
-  keepAliveInterval = setInterval(() => {
-    keepConnectionsAlive().catch((error) => {
-      logger.error(`[Session Manager] Error in keep-alive: ${error}`);
-    });
-  }, 5 * 60 * 1000); // Every 5 minutes
+  keepAliveInterval = setInterval(
+    () => {
+      keepConnectionsAlive().catch((error) => {
+        logger.error(`[Session Manager] Error in keep-alive: ${error}`);
+      });
+    },
+    5 * 60 * 1000,
+  ); // Every 5 minutes
 
-  logger.info(`[Session Manager] Idle connection checker started (checks every ${CHECK_INTERVAL_MS / 1000} seconds, disconnects after ${IDLE_TIMEOUT_MS / 1000} seconds of inactivity)`);
+  logger.info(
+    `[Session Manager] Idle connection checker started (checks every ${CHECK_INTERVAL_MS / 1000} seconds, disconnects after ${IDLE_TIMEOUT_MS / 1000} seconds of inactivity)`,
+  );
   logger.info("[Session Manager] Connection keep-alive started (executes every 5 minutes to prevent connection timeouts)");
 }
 
@@ -1359,7 +1384,7 @@ export function stopIdleConnectionChecker(): void {
  */
 export async function closeAllConnections(): Promise<void> {
   stopIdleConnectionChecker();
-  
+
   for (const [id, pool] of connectionPools) {
     try {
       if (pool instanceof Database) {
