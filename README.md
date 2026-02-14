@@ -221,6 +221,6 @@ MIT License - see [LICENSE](LICENSE) for details
 
 ## Author & Owner
 
-**Tony Xu** <fihtony@gmail.com>
+**Tony Xu** <tony@tarch.ca>
 
 Copyright © 2026 Tony Xu. All rights reserved.
